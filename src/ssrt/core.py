@@ -7,7 +7,7 @@ from .utils.util import toDB, toPower
 
 class S2RTR:
 
-    def __init__(self, f, theta_i, theta_s, phi_i, phi_s, s, cl, eps2, eps3, a, kappa_e, d, acftype, RT_models):
+    def __init__(self, frq_GHz, theta_i, theta_s, phi_i, phi_s, s, cl, eps2, eps3, a, kappa_e, d, acftype, RT_models):
         """
         Initializes the S2RTR class with the given parameters.
 
@@ -46,7 +46,7 @@ class S2RTR:
                 If True, returns the backscatter coefficients of the ground surface.
         """
         
-        self.f = f
+        self.f = frq_GHz
         self.theta_i = theta_i
         self.theta_s = theta_s
         self.phi_i = phi_i
@@ -83,7 +83,7 @@ class S2RTR:
         assert self.d > 0, "Thickness of the Rayleigh layer must be > 0"
         assert self.RT_s in ['AIEM', 'PRISM1'], "RT_s must be 'AIEM' or 'PRISM1'"
         assert self.RT_c in ['Diff', 'Spec'], "RT_c must be 'Diff' or 'Spec'"
-        assert self.acftype in ['Gaussian', 'Exponential', 'Spherical'], "acftype must be 'Gaussian', 'Exponential', or 'Spherical'"
+        assert self.acftype in ['gauss', 'exp', 'pow'], "acftype must be 'Gaussian', 'Exponential', or 'Power-law 1.5'"
         assert self.theta_i >= 0, "Incidence angle must be >= 0"
         assert self.theta_i <= 90, "Incidence angle must be <= 90"
         assert self.theta_s >= 0, "Scattering angle must be >= 0"
@@ -97,7 +97,7 @@ class S2RTR:
         assert self.cl > 0, "Correlation length must be > 0"
 
 
-    def calc_sigma(self, get_sig_ground=False, todB=True):
+    def calc_sigma(self, todB=True):
         """
         Computes the backscatter coefficients for the given parameters.
         
@@ -112,13 +112,15 @@ class S2RTR:
             sig_s = {}
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
-                aiem0 = AIEM(self.f, self.theta_i, self.theta_s, self.phi_i, self.phi_s, self.s, self.cl, self.eps2, self.acftype)
+                aiem0 = AIEM(
+                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                    sigma=self.s, cl=self.cl, eps=self.eps3, acf_type=self.acftype)
                 sig_s_full = aiem0.run(todB=False)
                 sig_s = dict(zip(pol_list, sig_s_full))
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
-                prism0 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps2, s=self.s)
+                prism0 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps3, s=self.s)
                 sig_s_full = prism0.calc_sigma(todB=False)
                 sig_s = dict(zip(pol_list, sig_s_full))
             else:
@@ -142,12 +144,16 @@ class S2RTR:
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
                 # --- Call the AIEM model for the Rayleigh layer ---
-                aiem0 = AIEM(self.f, self.theta_i, self.theta_s, self.phi_i, self.phi_s, self.s, self.cl, self.eps2, self.acftype)
+                aiem0 = AIEM(
+                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                    sigma=self.s, cl=self.cl, eps=self.eps2, acf_type=self.acftype)
                 sig_0_top_full = aiem0.run(todB=False)
                 sig_0_top = dict(zip(pol_list, sig_0_top_full))
                 
                 # --- Call the AIEM model for the ground surface ---
-                aiem1 = AIEM(self.f, self.theta_i, self.theta_s, self.phi_i, self.phi_s, self.s, self.cl, self.eps_ratio, self.acftype)
+                aiem1 = AIEM(
+                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                    sigma=self.s, cl=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
                 sig_0_bot_full = aiem1.run(todB=False)
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
             
