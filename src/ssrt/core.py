@@ -1,5 +1,5 @@
 import numpy as np
-from aiem import AIEM
+from aiem import AIEM0
 from .surface.prism1 import PRISM1
 from .utils.fresnel import ReflTransm_PlanarBoundary
 from .utils.util import toDB, toPower
@@ -112,11 +112,19 @@ class S2RTR:
             sig_s = {}
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
-                aiem0 = AIEM(
-                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    s=self.s, l=self.cl, eps=self.eps3, acf_type=self.acftype)
-                sig_s_full = aiem0.run(todB=False).tolist()[0]
-                sig_s = dict(zip(pol_list, sig_s_full))
+                # aiem0 = AIEM0(
+                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                #     s=self.s, l=self.cl, eps=self.eps3, acf_type=self.acftype)
+                # sig_s_full = aiem0.run(todB=False).tolist()[0]
+                # sig_s = dict(zip(pol_list, sig_s_full))
+                
+                aiem0 = AIEM0(
+                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl, 
+                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps3)
+                
+                # Run the AIEM model
+                # Note: todB=False to get the results in Power
+                sig_s = aiem0.compute_sigma0(pol='full', todB=False)
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
@@ -144,18 +152,31 @@ class S2RTR:
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
                 # --- Call the AIEM model for the Rayleigh layer ---
-                aiem0 = AIEM(
-                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    s=self.s, l=self.cl, eps=self.eps2, acf_type=self.acftype)
-                sig_0_top_full = aiem0.run(todB=False).tolist()[0]
-                sig_0_top = dict(zip(pol_list, sig_0_top_full))
+                # aiem0 = AIEM0(
+                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                #     s=self.s, l=self.cl, eps=self.eps2, acf_type=self.acftype)
+                # sig_0_top_full = aiem0.run(todB=False).tolist()[0]
+                # sig_0_top = dict(zip(pol_list, sig_0_top_full))
+
+                aiem0 = AIEM0(
+                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
+                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps2)
+                # Run the AIEM model for the Rayleigh layer
+                # Note: todB=False to get the results in Power
+                sig_0_top = aiem0.compute_sigma0(pol='full', todB=False)
                 
                 # --- Call the AIEM model for the ground surface ---
-                aiem1 = AIEM(
-                    frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    s=self.s, l=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
-                sig_0_bot_full = aiem1.run(todB=False).tolist()[0]
-                sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+                # aiem1 = AIEM0(
+                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
+                #     s=self.s, l=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
+                # sig_0_bot_full = aiem1.run(todB=False).tolist()[0]
+                # sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+                aiem1 = AIEM0(
+                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
+                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps_ratio)
+                # Run the AIEM model for the ground surface
+                sig_0_bot = aiem1.compute_sigma0(pol='full', todB=False)
+                # Note: todB=False to get the results in Power
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
