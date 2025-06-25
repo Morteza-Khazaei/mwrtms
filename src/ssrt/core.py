@@ -114,8 +114,8 @@ class S2RTR:
             if self.RT_s == 'AIEM':
                 aiem0 = AIEM(
                     frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    sigma=self.s, cl=self.cl, eps=self.eps3, acf_type=self.acftype)
-                sig_s_full = aiem0.run(todB=False)
+                    s=self.s, l=self.cl, eps=self.eps3, acf_type=self.acftype)
+                sig_s_full = aiem0.run(todB=False).tolist()[0]
                 sig_s = dict(zip(pol_list, sig_s_full))
             
             # --- Call the PRISM1 model ---
@@ -146,15 +146,15 @@ class S2RTR:
                 # --- Call the AIEM model for the Rayleigh layer ---
                 aiem0 = AIEM(
                     frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    sigma=self.s, cl=self.cl, eps=self.eps2, acf_type=self.acftype)
-                sig_0_top_full = aiem0.run(todB=False)
+                    s=self.s, l=self.cl, eps=self.eps2, acf_type=self.acftype)
+                sig_0_top_full = aiem0.run(todB=False).tolist()[0]
                 sig_0_top = dict(zip(pol_list, sig_0_top_full))
                 
                 # --- Call the AIEM model for the ground surface ---
                 aiem1 = AIEM(
                     frq_ghz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                    sigma=self.s, cl=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
-                sig_0_bot_full = aiem1.run(todB=False)
+                    s=self.s, l=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
+                sig_0_bot_full = aiem1.run(todB=False).tolist()[0]
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
             
             # --- Call the PRISM1 model ---
@@ -184,10 +184,8 @@ class S2RTR:
                 return sig_0_top, sig_0_bot, sig_t
         else:
             raise ValueError("RT_c must be 'Diff' or 'Spec'")
-        
-        
-    
-    
+
+
     def __S2RTR_DiffuseUB_FullPol(self, sig_s, eps, a, kappa_e, d, theta_i, todB=True):
         """
         Computes σ₀ for all polarizations (vv, hh, hv, vh) for a weakly
