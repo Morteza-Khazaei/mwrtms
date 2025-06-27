@@ -1,6 +1,4 @@
 import numpy as np
-from aiem import AIEM0
-from .surface.prism1 import PRISM1
 from .utils.fresnel import ReflTransm_PlanarBoundary
 from .utils.util import toDB, toPower
 
@@ -81,7 +79,7 @@ class S2RTR:
         assert self.cl > 0, "Correlation length must be > 0"
         assert self.kappa_e > 0, "Extinction coefficient must be > 0"
         assert self.d > 0, "Thickness of the Rayleigh layer must be > 0"
-        assert self.RT_s in ['AIEM', 'PRISM1'], "RT_s must be 'AIEM' or 'PRISM1'"
+        assert self.RT_s in ['AIEM', 'PRISM1', 'Dubois95', 'SMART'], "RT_s must be 'AIEM' or 'PRISM1'"
         assert self.RT_c in ['Diff', 'Spec'], "RT_c must be 'Diff' or 'Spec'"
         assert self.acftype in ['gauss', 'exp', 'pow'], "acftype must be 'Gaussian', 'Exponential', or 'Power-law 1.5'"
         assert self.theta_i >= 0, "Incidence angle must be >= 0"
@@ -105,6 +103,7 @@ class S2RTR:
             dict: A dictionary containing the backscatter coefficients in dB for 
                   'vv', 'hh', 'hv', and 'vh' polarizations.
         """
+
         pol_list = ['vv', 'hh', 'hv', 'vh']
         
         # --- Call the radiative transfer model ---
@@ -112,6 +111,8 @@ class S2RTR:
             sig_s = {}
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
+                from aiem import AIEM0
+
                 # aiem0 = AIEM0(
                 #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
                 #     s=self.s, l=self.cl, eps=self.eps3, acf_type=self.acftype)
@@ -128,8 +129,22 @@ class S2RTR:
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
+                from .surface.prism1 import PRISM1
                 prism0 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps3, s=self.s)
                 sig_s_full = prism0.calc_sigma(todB=False)
+                # Convert to a dictionary with polarizations
+                sig_s = dict(zip(pol_list, sig_s_full))
+            elif self.RT_s == 'Dubois95':
+                from .surface.dubois95 import Dubois95
+                db95 = Dubois95(fGHz=self.f, theta=self.theta_i, eps=self.eps3, s=self.s)
+                sig_s_full = db95.calc_sigma(todB=False)
+                # Convert to a dictionary with polarizations
+                sig_s = dict(zip(pol_list, sig_s_full))
+            elif self.RT_s == 'SMART':
+                from .surface.smart import SMART
+                smart = SMART(fGHz=self.f, theta_deg=self.theta_i, s=self.s, eps=self.eps3)
+                sig_s_full = smart.calc_sigma(todB=False)
+                # Convert to a dictionary with polarizations
                 sig_s = dict(zip(pol_list, sig_s_full))
             else:
                 raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
@@ -151,13 +166,8 @@ class S2RTR:
             
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
+                from aiem import AIEM0
                 # --- Call the AIEM model for the Rayleigh layer ---
-                # aiem0 = AIEM0(
-                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                #     s=self.s, l=self.cl, eps=self.eps2, acf_type=self.acftype)
-                # sig_0_top_full = aiem0.run(todB=False).tolist()[0]
-                # sig_0_top = dict(zip(pol_list, sig_0_top_full))
-
                 aiem0 = AIEM0(
                     frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
                     thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps2)
@@ -166,11 +176,6 @@ class S2RTR:
                 sig_0_top = aiem0.compute_sigma0(pol='full', todB=False)
                 
                 # --- Call the AIEM model for the ground surface ---
-                # aiem1 = AIEM0(
-                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                #     s=self.s, l=self.cl, eps=self.eps_ratio, acf_type=self.acftype)
-                # sig_0_bot_full = aiem1.run(todB=False).tolist()[0]
-                # sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
                 aiem1 = AIEM0(
                     frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
                     thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps_ratio)
@@ -180,6 +185,10 @@ class S2RTR:
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
+                
+                
+                # --- Import the PRISM1 model ---
+                from .surface.prism1 import PRISM1
                 # --- Call the PRISM1 model for the Rayleigh layer ---
                 prism0 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps2, s=self.s)
                 sig_0_top_full = prism0.calc_sigma(todB=False)
@@ -188,6 +197,32 @@ class S2RTR:
                 # --- Call the PRISM1 model for the ground surface ---
                 prism1 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps_ratio, s=self.s)
                 sig_0_bot_full = prism1.calc_sigma(todB=False)
+                sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+            
+            elif self.RT_s == 'Dubois95':
+
+                # --- Import the Dubois95 model ---
+                from .surface.dubois95 import Dubois95
+                # --- Call the Dubois95 model for the Rayleigh layer ---
+                db95_top = Dubois95(fGHz=self.f, theta=self.theta_i, eps=self.eps2, s=self.s)
+                sig_0_top_full = db95_top.calc_sigma(todB=False)
+                sig_0_top = dict(zip(pol_list, sig_0_top_full))
+                
+                # --- Call the Dubois95 model for the ground surface ---
+                db95_bot = Dubois95(fGHz=self.f, theta=self.theta_i, eps=self.eps_ratio, s=self.s)
+                sig_0_bot_full = db95_bot.calc_sigma(todB=False)
+                sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+            
+            elif self.RT_s == 'SMART':
+                from .surface.smart import SMART
+                # --- Call the SMART model for the Rayleigh layer ---
+                smart_top = SMART(fGHz=self.f, theta_deg=self.theta_i, s=self.s, eps=self.eps2)
+                sig_0_top_full = smart_top.calc_sigma(todB=False)
+                sig_0_top = dict(zip(pol_list, sig_0_top_full))
+                
+                # --- Call the SMART model for the ground surface ---
+                smart_bot = SMART(fGHz=self.f, theta_deg=self.theta_i, s=self.s, eps=self.eps_ratio)
+                sig_0_bot_full = smart_bot.calc_sigma(todB=False)
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
             else:
                 raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
