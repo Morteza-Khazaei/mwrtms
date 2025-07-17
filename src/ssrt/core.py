@@ -242,7 +242,7 @@ class S2RTR:
             raise ValueError("RT_c must be 'Diff' or 'Spec'")
 
 
-    def __S2RTR_DiffuseUB_FullPol(self, sig_s, eps, a, kappa_e, d, theta_i, todB=True):
+    def __S2RTR_DiffuseUB_FullPol(self, sig_s, eps, a, kappa_e, d, theta_i, n=2, todB=True):
         """
         Computes σ₀ for all polarizations (vv, hh, hv, vh) for a weakly
         scattering Rayleigh layer with a diffuse upper boundary.
@@ -261,6 +261,10 @@ class S2RTR:
                 Thickness of the Rayleigh layer (m).
             theta_i : float
                 Incidence angle in degrees.
+            n : int
+                1 if the scatterer was incohirent, 2 if coherent.
+            todB : bool
+                If True, returns the results in dB. If False, returns in Power.
         
         Returns:
             A dictionary of σ₀ in dB for:
@@ -274,47 +278,41 @@ class S2RTR:
 
         # --- Reflectivity (Fresnel) ---
         _, _, gammah, gammav, *_ = ReflTransm_PlanarBoundary(1, eps, theta_i)
-        Gamma = {
-            'v': gammav,
-            'h': gammah
-        }
-
-        # Initialize output
+        
+        # --- Scattering coefficient ---
         sigma_0_db = {}
 
-        # Loop over all polarizations
-        for pq in ['vv', 'hh', 'hv', 'vh']:
-            p, q = pq[0], pq[1]
-            Gamma_p = Gamma[p]
-            Gamma_q = Gamma[q]
+        # Apply generalized equation
+        sigma_0_vv = (
+            U2 * sig_s['vv']
+            + 0.75 * a * cos_theta * (1 - U2) * (1 + gammav**2 * U2)
+            + 3 * n * kappa_s * d * gammav * U2
+        )
+        sigma_0_hh = (
+            U2 * sig_s['hh']
+            + 0.75 * a * cos_theta * (1 - U2) * (1 + gammah**2 * U2)
+            + 3 * n * kappa_s * d * gammah * U2
+        )
+        sigma_0_hv = U2 * sig_s['hv']
+        sigma_0_vh = U2 * sig_s['vh']
+        
+        # Convert to dB
+        if todB:
+            sigma_0_db['vv'] = toDB(sigma_0_vv)
+            sigma_0_db['hh'] = toDB(sigma_0_hh)
+            sigma_0_db['hv'] = toDB(sigma_0_hv)
+            sigma_0_db['vh'] = toDB(sigma_0_vh)
+        else:
+            sigma_0_db['vv'] = sigma_0_vv
+            sigma_0_db['hh'] = sigma_0_hh
+            sigma_0_db['hv'] = sigma_0_hv
+            sigma_0_db['vh'] = sigma_0_vh
 
-            # Volume backscatter term
-            if pq in ['hv', 'vh']:
-                sigma_v_back = a   # You can use e.g., a/2 if needed
-                n = 1              # Incoherent
-            else:
-                sigma_v_back = 3 * a / 4
-                n = 2              # Coherent for hh/vv
-
-            sigma_v_bist = kappa_s
-
-            # Apply generalized equation
-            sigma_0_lin = (
-                U2 * sig_s[pq]
-                + sigma_v_back * cos_theta / (2 * kappa_e) * (1 - U2) * (1 + Gamma_p * Gamma_q * U2)
-                + n * sigma_v_bist * d * (Gamma_p + Gamma_q) * U2
-            )
-            
-            # Convert to dB
-            if todB:
-                sigma_0_db[pq] = toDB(sigma_0_lin)
-            else:
-                sigma_0_db[pq] = sigma_0_lin
 
         return sigma_0_db
 
 
-    def __S2RTR_SpecularUB_FullPol(self, sig_0_top, sig_0_bot, eps, eps2, eps3, a, kappa_e, d, theta_i, todB=True):
+    def __S2RTR_SpecularUB_FullPol(self, sig_0_top, sig_0_bot, eps, eps2, eps3, a, kappa_e, d, theta_i, n=2, todB=True):
         """
         Computes sigma_0 for all polarizations (vv, hh, hv, vh) for a weakly scattering
         Rayleigh layer with distinct upper boundary using PRISM models.
@@ -338,6 +336,8 @@ class S2RTR:
                 Thickness of the Rayleigh layer (m).
             theta_i : float
                 Incidence angle in degrees.
+            n : int
+                1 if the scatterer was incoherent, 2 if coherent.
             todB : bool
                 If True, returns the results in dB. If False, returns in Power.
 
@@ -357,49 +357,39 @@ class S2RTR:
 
         # Transmissivity
         T = np.exp(-kappa_e * d / costhetapr)
-        T2 = T ** 2
 
         # Reflectivity and transmissivity of top boundary (air -> layer)
         _, _, _, _, _, _, Th_12, Tv_12 = ReflTransm_PlanarBoundary(eps, eps2, theta_i)
 
         # Reflectivity of bottom boundary (layer -> ground)
         _, _, gammah_23, gammav_23, *_ = ReflTransm_PlanarBoundary(eps2, eps3, thetapr_deg)
-        Gamma = {'v': gammav_23, 'h': gammah_23}
-        T_top = {'v': Tv_12, 'h': Th_12}
 
         # Compute σ₀ for all polarization combinations
         sigma_0 = {}
 
-        for pq in ['vv', 'hh', 'hv', 'vh']:
-            p, q = pq[0], pq[1]
-            Gamma_p = Gamma[p]
-            Gamma_q = Gamma[q]
-            Tpq = T_top[p] * T_top[q]
-            sig_surface = sig_0_top[pq]
-            sig_bottom = sig_0_bot[pq]
-
-            # Backscatter and bistatic coefficients
-            if pq in ['hv', 'vh']:
-                sigma_v_back = a
-                n = 1            # Incoherent
-            else:
-                sigma_v_back = 3 * a / 4
-                n = 2            # Coherent for hh/vv
-
-            sigma_v_bist = kappa_s
-
-            # Generalized version of Eq. 11.79
-            sigma_lin = (
-                Tpq * (
-                    T2 * sig_bottom +
-                    sigma_v_back * costhetapr / (kappa_e + kappa_e) * (1 - T2) * (1 + Gamma_p * Gamma_q * T2) +
-                    n * sigma_v_bist * d * (Gamma_p + Gamma_q) * T2
-                ) + sig_surface
-            )
-            # Convert to dB
-            if todB:
-                sigma_0[pq] = toDB(sigma_lin)
-            else:
-                sigma_0[pq] = sigma_lin
+        # Generalized version of Eq. 11.79
+        sigma_0_vv = (Tv_12**2 * (T**2 * sig_0_bot['vv'] + 0.75*a * costhetapr * (1 - T**2) * 
+                 (1 + gammav_23**2 * T**2) + 3 * n * kappa_s * d * gammav_23 * T**2) + 
+                 sig_0_top['vv'])
+    
+        sigma_0_hh = (Th_12**2 * (T**2 * sig_0_bot['hh'] + 0.75*a * costhetapr * (1 - T**2) * 
+                    (1 + gammah_23**2 * T**2) + 3 * n * kappa_s * d * gammah_23 * T**2) + 
+                    sig_0_top['hh'])
+        
+        sigma_0_vh = (Tv_12 * Th_12 * (T**2 * sig_0_bot['vh'] + T**2 * sig_0_top['vh']))
+        
+        sigma_0_hv = (Tv_12 * Th_12 * (T**2 * sig_0_bot['hv'] + T**2 * sig_0_top['hv']))
+        
+        # Convert to dB
+        if todB:
+            sigma_0['vv'] = toDB(sigma_0_vv)
+            sigma_0['hh'] = toDB(sigma_0_hh)
+            sigma_0['hv'] = toDB(sigma_0_hv)
+            sigma_0['vh'] = toDB(sigma_0_vh)
+        else:
+            sigma_0['vv'] = sigma_0_vv
+            sigma_0['hh'] = sigma_0_hh
+            sigma_0['hv'] = sigma_0_hv
+            sigma_0['vh'] = sigma_0_vh
 
         return sigma_0
