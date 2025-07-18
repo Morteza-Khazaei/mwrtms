@@ -128,26 +128,26 @@ class S2RTR:
                 sig_s = aiem0.compute_sigma0(pol='full', todB=False)
             
             # --- Call the PRISM1 model ---
-            elif self.RT_s == 'PRISM1':
+            if self.RT_s == 'PRISM1':
                 from .surface.prism1 import PRISM1
                 prism0 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps3, s=self.s)
                 sig_s_full = prism0.calc_sigma(todB=False)
                 # Convert to a dictionary with polarizations
                 sig_s = dict(zip(pol_list, sig_s_full))
-            elif self.RT_s == 'Dubois95':
+            if self.RT_s == 'Dubois95':
                 from .surface.dubois95 import Dubois95
                 db95 = Dubois95(fGHz=self.f, theta=self.theta_i, eps=self.eps3, s=self.s)
                 sig_s_full = db95.calc_sigma(todB=False)
                 # Convert to a dictionary with polarizations
                 sig_s = dict(zip(pol_list, sig_s_full))
-            elif self.RT_s == 'SMART':
+            if self.RT_s == 'SMART':
                 from .surface.smart import SMART
                 smart = SMART(fGHz=self.f, theta_deg=self.theta_i, s=self.s, eps=self.eps3)
                 sig_s_full = smart.calc_sigma(todB=False)
                 # Convert to a dictionary with polarizations
                 sig_s = dict(zip(pol_list, sig_s_full))
-            else:
-                raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
+            # else:
+            #     raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
             
             # --- Call the Rayleigh model ---
             sig_t = self.__S2RTR_DiffuseUB_FullPol(sig_s, self.eps2, self.a, self.kappa_e, self.d, self.theta_i, todB=todB)
@@ -272,8 +272,9 @@ class S2RTR:
         """
         theta_rad = np.radians(theta_i)
         cos_theta = np.cos(theta_rad)
-        Upsilon = np.exp(-kappa_e * d / cos_theta)
-        U2 = Upsilon ** 2
+        tau = (kappa_e * d) / cos_theta
+        T = np.exp(-tau)
+        T2 = T ** 2
         kappa_s = a * kappa_e
 
         # --- Reflectivity (Fresnel) ---
@@ -284,17 +285,17 @@ class S2RTR:
 
         # Apply generalized equation
         sigma_0_vv = (
-            U2 * sig_s['vv']
-            + 0.75 * a * cos_theta * (1 - U2) * (1 + gammav**2 * U2)
-            + 3 * n * kappa_s * d * gammav * U2
+            T2 * sig_s['vv']
+            + 0.75 * a * cos_theta * (1 - T2) * (1 + gammav**2 * T2)
+            + 3 * n * kappa_s * d * gammav * T2
         )
         sigma_0_hh = (
-            U2 * sig_s['hh']
-            + 0.75 * a * cos_theta * (1 - U2) * (1 + gammah**2 * U2)
-            + 3 * n * kappa_s * d * gammah * U2
+            T2 * sig_s['hh']
+            + 0.75 * a * cos_theta * (1 - T2) * (1 + gammah**2 * T2)
+            + 3 * n * kappa_s * d * gammah * T2
         )
-        sigma_0_hv = U2 * sig_s['hv']
-        sigma_0_vh = U2 * sig_s['vh']
+        sigma_0_hv = T2 * sig_s['hv']
+        sigma_0_vh = T2 * sig_s['vh']
         
         # Convert to dB
         if todB:
@@ -356,7 +357,9 @@ class S2RTR:
         kappa_s = a * kappa_e
 
         # Transmissivity
-        T = np.exp(-kappa_e * d / costhetapr)
+        tau = kappa_e * d / costhetapr
+        T = np.exp(-tau)
+        T2 = T ** 2
 
         # Reflectivity and transmissivity of top boundary (air -> layer)
         _, _, _, _, _, _, Th_12, Tv_12 = ReflTransm_PlanarBoundary(eps, eps2, theta_i)
@@ -368,17 +371,17 @@ class S2RTR:
         sigma_0 = {}
 
         # Generalized version of Eq. 11.79
-        sigma_0_vv = (Tv_12**2 * (T**2 * sig_0_bot['vv'] + 0.75*a * costhetapr * (1 - T**2) * 
-                 (1 + gammav_23**2 * T**2) + 3 * n * kappa_s * d * gammav_23 * T**2) + 
+        sigma_0_vv = (Tv_12**2 * (T2 * sig_0_bot['vv'] + 0.75*a * costhetapr * (1 - T2) * 
+                 (1 + gammav_23**2 * T2) + 3 * n * kappa_s * d * gammav_23 * T2) + 
                  sig_0_top['vv'])
     
-        sigma_0_hh = (Th_12**2 * (T**2 * sig_0_bot['hh'] + 0.75*a * costhetapr * (1 - T**2) * 
-                    (1 + gammah_23**2 * T**2) + 3 * n * kappa_s * d * gammah_23 * T**2) + 
+        sigma_0_hh = (Th_12**2 * (T2 * sig_0_bot['hh'] + 0.75*a * costhetapr * (1 - T2) * 
+                    (1 + gammah_23**2 * T2) + 3 * n * kappa_s * d * gammah_23 * T**2) + 
                     sig_0_top['hh'])
         
-        sigma_0_vh = (Tv_12 * Th_12 * (T**2 * sig_0_bot['vh'] + T**2 * sig_0_top['vh']))
+        sigma_0_vh = (Tv_12 * Th_12 * (T2 * sig_0_bot['vh'] + T2 * sig_0_top['vh']))
         
-        sigma_0_hv = (Tv_12 * Th_12 * (T**2 * sig_0_bot['hv'] + T**2 * sig_0_top['hv']))
+        sigma_0_hv = (Tv_12 * Th_12 * (T2 * sig_0_bot['hv'] + T2 * sig_0_top['hv']))
         
         # Convert to dB
         if todB:
