@@ -79,7 +79,7 @@ class S2RTR:
         assert self.cl > 0, "Correlation length must be > 0"
         assert self.kappa_e > 0, "Extinction coefficient must be > 0"
         assert self.d > 0, "Thickness of the Rayleigh layer must be > 0"
-        assert self.RT_s in ['AIEM', 'PRISM1', 'Dubois95', 'SMART'], "RT_s must be 'AIEM' or 'PRISM1'"
+        assert self.RT_s in ['AIEM', 'PRISM1', 'Dubois95', 'SMART', 'SPM3D'], "RT_s must be 'AIEM', 'PRISM1', 'Dubois95', 'SMART', or 'SPM3D'"
         assert self.RT_c in ['Diff', 'Spec'], "RT_c must be 'Diff' or 'Spec'"
         assert self.acftype in ['gauss', 'exp', 'pow'], "acftype must be 'Gaussian', 'Exponential', or 'Power-law 1.5'"
         assert self.theta_i >= 0, "Incidence angle must be >= 0"
@@ -146,6 +146,11 @@ class S2RTR:
                 sig_s_full = smart.calc_sigma(todB=False)
                 # Convert to a dictionary with polarizations
                 sig_s = dict(zip(pol_list, sig_s_full))
+            if self.RT_s == 'SPM3D':
+                from .surface.spm import SPM3D
+                spm = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps3)
+                sig_s_full = spm.calc_sigma(todB=False)
+                sig_s = dict(zip(pol_list, sig_s_full))
             # else:
             #     raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
             
@@ -197,6 +202,16 @@ class S2RTR:
                 # --- Call the PRISM1 model for the ground surface ---
                 prism1 = PRISM1(f=self.f, theta_i=self.theta_i, eps=self.eps_ratio, s=self.s)
                 sig_0_bot_full = prism1.calc_sigma(todB=False)
+                sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+            elif self.RT_s == 'SPM3D':
+                from .surface.spm import SPM3D
+
+                spm_top = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps2)
+                sig_0_top_full = spm_top.calc_sigma(todB=False)
+                sig_0_top = dict(zip(pol_list, sig_0_top_full))
+
+                spm_bot = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps_ratio)
+                sig_0_bot_full = spm_bot.calc_sigma(todB=False)
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
             
             elif self.RT_s == 'Dubois95':
