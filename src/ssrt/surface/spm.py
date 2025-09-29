@@ -6,7 +6,7 @@ from ..utils.util import toLambda, toDB
 class SPM3D:
     """First-order Small Perturbation Method (SPM) backscatter model."""
 
-    def __init__(self, fr, sig, L, thi, er):
+    def __init__(self, fr, sig, L, thi, eps):
         """
         SPM3D rough-surface backscatter model.
 
@@ -15,13 +15,13 @@ class SPM3D:
         - sig : RMS height (m)
         - L   : correlation length (m)
         - thi : incidence angle (deg)
-        - er  : complex dielectric constant (relative permittivity)
+        - eps  : complex dielectric constant (relative permittivity)
 
         Returns:
         - sigma_0_vv, sigma_0_hh, sigma_0_hv, sigma_0_vh (dB)
         """
         self.theta_rad = np.radians(thi)
-        self.eps = er
+        self.eps = eps
         self.h = sig
         self.corr_length = L
         lambda_m = toLambda(fr)

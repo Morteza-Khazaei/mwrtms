@@ -79,7 +79,7 @@ class S2RTR:
         assert self.cl > 0, "Correlation length must be > 0"
         assert self.kappa_e > 0, "Extinction coefficient must be > 0"
         assert self.d > 0, "Thickness of the Rayleigh layer must be > 0"
-        assert self.RT_s in ['AIEM', 'PRISM1', 'Dubois95', 'SMART', 'SPM3D'], "RT_s must be 'AIEM', 'PRISM1', 'Dubois95', 'SMART', or 'SPM3D'"
+        assert self.RT_s in ['AIEM', 'PRISM1', 'Dubois95', 'SMART', 'SPM3D', 'I2EM'], "RT_s must be 'AIEM', 'PRISM1', 'Dubois95', 'SMART', 'SPM3D', or 'I2EM'"
         assert self.RT_c in ['Diff', 'Spec'], "RT_c must be 'Diff' or 'Spec'"
         assert self.acftype in ['gauss', 'exp', 'pow'], "acftype must be 'Gaussian', 'Exponential', or 'Power-law 1.5'"
         assert self.theta_i >= 0, "Incidence angle must be >= 0"
@@ -148,9 +148,35 @@ class S2RTR:
                 sig_s = dict(zip(pol_list, sig_s_full))
             if self.RT_s == 'SPM3D':
                 from .surface.spm import SPM3D
-                spm = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps3)
+                spm = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, eps=self.eps3)
                 sig_s_full = spm.calc_sigma(todB=False)
                 sig_s = dict(zip(pol_list, sig_s_full))
+            if self.RT_s == 'I2EM':
+                from .surface.i2em import I2EM_Bistat_model
+
+                sp_map = {'exp': 1, 'gauss': 2, 'pow': 3}
+                sp = sp_map.get(self.acftype, 1)
+                xx = 1.5 if sp == 3 else 0.0
+                phi_rel = (self.phi_s - self.phi_i) % 360
+                eps_surface = float(np.real(np.atleast_1d(self.eps3)[0]))
+
+                vv_db, hh_db, hv_db, vh_db = I2EM_Bistat_model(
+                    fr=self.f,
+                    sig=self.s,
+                    L=self.cl,
+                    thi=self.theta_i,
+                    ths=self.theta_s,
+                    phs=phi_rel,
+                    er=eps_surface,
+                    sp=sp,
+                    xx=xx
+                )
+                sig_s = {
+                    'vv': toPower(vv_db),
+                    'hh': toPower(hh_db),
+                    'hv': toPower(hv_db),
+                    'vh': toPower(vh_db)
+                }
             # else:
             #     raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
             
@@ -206,11 +232,11 @@ class S2RTR:
             elif self.RT_s == 'SPM3D':
                 from .surface.spm import SPM3D
 
-                spm_top = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps2)
+                spm_top = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, eps=self.eps2)
                 sig_0_top_full = spm_top.calc_sigma(todB=False)
                 sig_0_top = dict(zip(pol_list, sig_0_top_full))
 
-                spm_bot = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, er=self.eps_ratio)
+                spm_bot = SPM3D(fr=self.f, sig=self.s, L=self.cl, thi=self.theta_i, eps=self.eps_ratio)
                 sig_0_bot_full = spm_bot.calc_sigma(todB=False)
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
             
@@ -239,6 +265,51 @@ class S2RTR:
                 smart_bot = SMART(fGHz=self.f, theta_deg=self.theta_i, s=self.s, eps=self.eps_ratio)
                 sig_0_bot_full = smart_bot.calc_sigma(todB=False)
                 sig_0_bot = dict(zip(pol_list, sig_0_bot_full))
+            elif self.RT_s == 'I2EM':
+                from .surface.i2em import I2EM_Bistat_model
+
+                sp_map = {'exp': 1, 'gauss': 2, 'pow': 3}
+                sp = sp_map.get(self.acftype, 1)
+                xx = 1.5 if sp == 3 else 0.0
+                phi_rel = (self.phi_s - self.phi_i) % 360
+                eps_top = float(np.real(np.atleast_1d(self.eps2)[0]))
+                eps_bottom = float(np.real(np.atleast_1d(self.eps_ratio)[0]))
+
+                vv_db, hh_db, hv_db, vh_db = I2EM_Bistat_model(
+                    fr=self.f,
+                    sig=self.s,
+                    L=self.cl,
+                    thi=self.theta_i,
+                    ths=self.theta_s,
+                    phs=phi_rel,
+                    er=eps_top,
+                    sp=sp,
+                    xx=xx
+                )
+                sig_0_top = {
+                    'vv': toPower(vv_db),
+                    'hh': toPower(hh_db),
+                    'hv': toPower(hv_db),
+                    'vh': toPower(vh_db)
+                }
+
+                vv_db, hh_db, hv_db, vh_db = I2EM_Bistat_model(
+                    fr=self.f,
+                    sig=self.s,
+                    L=self.cl,
+                    thi=self.theta_i,
+                    ths=self.theta_s,
+                    phs=phi_rel,
+                    er=eps_bottom,
+                    sp=sp,
+                    xx=xx
+                )
+                sig_0_bot = {
+                    'vv': toPower(vv_db),
+                    'hh': toPower(hh_db),
+                    'hv': toPower(hv_db),
+                    'vh': toPower(vh_db)
+                }
             else:
                 raise ValueError("RT_s must be 'AIEM' or 'PRISM1'")
             
