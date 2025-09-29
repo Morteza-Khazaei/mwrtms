@@ -7,13 +7,27 @@ import matplotlib.pyplot as plt
 
 
 class Dubois95(object):
-    def __init__(self, fGHz, theta, eps, s):
-        """
+    """Dubois95 empirical backscatter model for rough bare soil.
+
         Parameters
         ----------
-        lam : float
-            wavelength in meter
+        fGHz : float
+            Frequency in GHz.
+        theta : float or array-like
+            Incidence angle in degrees.
+        eps : complex
+            Complex relative permittivity of the surface.
+        s : float
+            Surface RMS height (m).
+
+        Examples
+        --------
+        >>> model = Dubois95(fGHz=5.405, theta=40.0, eps=5.0 + 1.0j, s=0.01)
+        >>> model.calc_sigma()  # doctest: +SKIP
         """
+
+    def __init__(self, fGHz, theta, eps, s):
+        """Initialise the Dubois95 model with scene parameters."""
         self.eps = eps
         
         self.theta = np.deg2rad(theta)

@@ -30,6 +30,21 @@ def _I2EM_Bistat_model_python(fr, sig, L, thi, ths, phs, er, sp, xx, notify=Fals
 
     Returns:
     - sigma_0_vv, sigma_0_hh, sigma_0_hv, sigma_0_vh (dB)
+
+    Examples
+    --------
+    >>> I2EM_Bistat_model(
+    ...     fr=10.0,
+    ...     sig=0.01,
+    ...     L=0.1,
+    ...     thi=30.0,
+    ...     ths=30.0,
+    ...     phs=180.0,
+    ...     er=3.0 + 0.5j,
+    ...     sp=1,
+    ...     xx=0.0,
+    ...     notify=False,
+    ... )  # doctest: +SKIP
     """
 
     # --- Helper functions ---

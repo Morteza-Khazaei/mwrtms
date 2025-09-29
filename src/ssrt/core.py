@@ -4,6 +4,54 @@ from .utils.util import toDB, toPower
 
 
 class S2RTR:
+    """Single-scattering radiative transfer (SSRT) canopy + soil model.
+
+    Parameters
+    ----------
+    frq_GHz : float
+        Frequency in GHz.
+    theta_i, theta_s : float
+        Incidence and scattering angles in degrees.
+    phi_i, phi_s : float
+        Azimuth angles (deg) of incident and scattered directions.
+    s : float
+        Soil RMS height (m).
+    cl : float
+        Soil correlation length (m).
+    eps2 : complex or array-like
+        Complex permittivity of the canopy layer.
+    eps3 : complex or array-like
+        Complex permittivity of the soil.
+    a : float
+        Single-scattering albedo (0 < a < 0.2).
+    kappa_e : float
+        Extinction coefficient of the canopy (Np/m).
+    d : float
+        Canopy thickness (m).
+    acftype : str
+        Surface autocorrelation type (``'exp'``, ``'gauss'``, ``'pow'``).
+    RT_models : dict
+        Mapping describing soil (`'RT_s'`) and canopy (`'RT_c'`) models.
+
+    Examples
+    --------
+    >>> ssrt = S2RTR(
+    ...     frq_GHz=5.405,
+    ...     theta_i=40.0,
+    ...     theta_s=40.0,
+    ...     phi_i=0.0,
+    ...     phi_s=180.0,
+    ...     s=0.02,
+    ...     cl=0.1,
+    ...     eps2=12.0 + 3.0j,
+    ...     eps3=5.0 + 1.0j,
+    ...     a=0.08,
+    ...     kappa_e=0.5,
+    ...     d=0.3,
+    ...     acftype='exp',
+    ...     RT_models={'RT_s': 'I2EM', 'RT_c': 'Diff'},
+    ... )  # doctest: +SKIP
+    """
 
     def __init__(self, frq_GHz, theta_i, theta_s, phi_i, phi_s, s, cl, eps2, eps3, a, kappa_e, d, acftype, RT_models):
         """
@@ -42,6 +90,25 @@ class S2RTR:
                 Radiative transfer model ('Diff', 'Spec').
             get_sig_ground : bool
                 If True, returns the backscatter coefficients of the ground surface.
+
+        Examples
+        --------
+        >>> rt = S2RTR(
+        ...     frq_GHz=5.405,
+        ...     theta_i=40.0,
+        ...     theta_s=40.0,
+        ...     phi_i=0.0,
+        ...     phi_s=180.0,
+        ...     s=0.02,
+        ...     cl=0.1,
+        ...     eps2=12.0 + 3.0j,
+        ...     eps3=5.0 + 1.0j,
+        ...     a=0.08,
+        ...     kappa_e=0.5,
+        ...     d=0.3,
+        ...     acftype='exp',
+        ...     RT_models={'RT_s': 'I2EM', 'RT_c': 'Diff'},
+        ... )  # doctest: +SKIP
         """
         
         self.f = frq_GHz
@@ -98,10 +165,30 @@ class S2RTR:
     def calc_sigma(self, todB=True):
         """
         Computes the backscatter coefficients for the given parameters.
-        
+
         Returns:
             dict: A dictionary containing the backscatter coefficients in dB for 
                   'vv', 'hh', 'hv', and 'vh' polarizations.
+
+        Examples
+        --------
+        >>> rt = S2RTR(
+        ...     frq_GHz=5.405,
+        ...     theta_i=40.0,
+        ...     theta_s=40.0,
+        ...     phi_i=0.0,
+        ...     phi_s=180.0,
+        ...     s=0.02,
+        ...     cl=0.1,
+        ...     eps2=12.0 + 3.0j,
+        ...     eps3=5.0 + 1.0j,
+        ...     a=0.08,
+        ...     kappa_e=0.5,
+        ...     d=0.3,
+        ...     acftype='exp',
+        ...     RT_models={'RT_s': 'I2EM', 'RT_c': 'Diff'},
+        ... )
+        >>> rt.calc_sigma()  # doctest: +SKIP
         """
 
         pol_list = ['vv', 'hh', 'hv', 'vh']

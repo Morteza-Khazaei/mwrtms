@@ -4,22 +4,29 @@ from ..utils.util import toLambda, toDB
 
 
 class SPM3D:
-    """First-order Small Perturbation Method (SPM) backscatter model."""
+    """First-order Small Perturbation Method (SPM) backscatter model.
+
+    Parameters
+    ----------
+    fr : float
+        Frequency in GHz.
+    sig : float
+        Surface RMS height (m).
+    L : float
+        Correlation length (m).
+    thi : float
+        Incidence angle in degrees.
+    eps : complex
+        Complex relative permittivity of the surface.
+
+    Examples
+    --------
+    >>> spm = SPM3D(fr=5.405, sig=0.01, L=0.1, thi=40.0, eps=5.0 + 1.0j)
+    >>> spm.calc_sigma()  # doctest: +SKIP
+    """
 
     def __init__(self, fr, sig, L, thi, eps):
-        """
-        SPM3D rough-surface backscatter model.
-
-        Parameters:
-        - fr  : frequency (GHz)
-        - sig : RMS height (m)
-        - L   : correlation length (m)
-        - thi : incidence angle (deg)
-        - eps  : complex dielectric constant (relative permittivity)
-
-        Returns:
-        - sigma_0_vv, sigma_0_hh, sigma_0_hv, sigma_0_vh (dB)
-        """
+        """Initialise the SPM3D model with geometric and dielectric parameters."""
         self.theta_rad = np.radians(thi)
         self.eps = eps
         self.h = sig

@@ -2,17 +2,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class SMART:
-    """
-    SMART Forward Model for radar backscatter estimation.
+    """Semi-empirical SMART backscatter model for VV/HH scattering.
 
-    Attributes:
-        frequency (float): Frequency in GHz
-        dielectric_constant (complex): Complex dielectric constant (ε = ε' - jε'')
-        theta_deg (float): Incidence angle in degrees
-        rms_height_cm (float): Surface RMS height in cm
+    Parameters
+    ----------
+    fGHz : float
+        Frequency in GHz.
+    theta_deg : float
+        Incidence angle in degrees.
+    s : float
+        Surface RMS height (m).
+    eps : complex
+        Complex relative permittivity of the surface.
 
-    Methods:
-        compute(): Computes sigma_0_vv and sigma_0_hh (in dB)
+    Examples
+    --------
+    >>> smart = SMART(fGHz=5.405, theta_deg=40.0, s=0.01, eps=5.0 + 1.0j)
+    >>> smart.calc_sigma()  # doctest: +SKIP
     """
 
     def __init__(self, fGHz, theta_deg, s, eps):
@@ -26,7 +32,25 @@ class SMART:
         self.sigma_0_hh = None
 
     def calc_sigma(self, todB=True):
-        """Compute sigma_0_vv and sigma_0_hh in dB using the SMART forward model."""
+        """Compute backscatter coefficients for VV/HH polarizations.
+
+        Parameters
+        ----------
+        todB : bool, default ``True``
+            If ``True`` return coefficients in dB, otherwise in linear power.
+
+        Returns
+        -------
+        tuple of float
+            ``(sigma_0_vv, sigma_0_hh, sigma_0_hv, sigma_0_vh)`` in the unit
+            requested by ``todB``. Cross-pol values are placeholders because
+            the SMART model does not provide them explicitly.
+
+        Examples
+        --------
+        >>> smart = SMART(fGHz=5.405, theta_deg=40.0, s=0.01, eps=5.0 + 1.0j)
+        >>> smart.calc_sigma(todB=False)  # doctest: +SKIP
+        """
         eps_pr = np.real(self.eps)
         theta_rad = np.radians(self.theta_deg)
         wavelength_cm = 30.0 / self.f  # Convert GHz to cm

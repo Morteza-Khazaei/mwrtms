@@ -3,29 +3,43 @@ from ..utils.fresnel import Fresn_Refl0, Fresn_Refl
 from ..utils.util import toLambda, toPower, toDB
 
 class PRISM1:
-    
+    """PRISM-1 rough-surface backscatter model.
+
+    Parameters
+    ----------
+    f : float
+        Frequency in GHz.
+    theta_i : float
+        Incidence angle in degrees.
+    eps : complex
+        Complex relative permittivity of the surface.
+    s : float
+        Surface RMS height (m).
+
+    Examples
+    --------
+    >>> prism = PRISM1(f=5.405, theta_i=40.0, eps=4.5 + 0.5j, s=0.015)
+    >>> prism.calc_sigma()  # doctest: +SKIP
+    """
+
     def __init__(self, f, theta_i, eps, s):
-        """
-        Computes sigma_0 for all three polarization combinations 
-        based on the PRISM-1 forward model.
+        """Initialise the PRISM-1 model with scene parameters.
 
-        Parameters:
-            f : float
-                Frequency in GHz.
-            theta_i : float
-                Incidence angle in degrees.
-            eps : complex
-                Complex dielectric constant of the surface.
-            s : float
-                Surface roughness parameter (standard deviation of surface height).
+        Parameters
+        ----------
+        f : float
+            Frequency in GHz.
+        theta_i : float
+            Incidence angle in degrees.
+        eps : complex
+            Complex relative permittivity of the surface.
+        s : float
+            Surface RMS height (m).
 
-        Returns:
-            sig_0_vv : float
-                Sigma_0 for VV polarization (dB).
-            sig_0_hh : float
-                Sigma_0 for HH polarization (dB).
-            sig_0_hv : float
-                Sigma_0 for HV polarization (dB).
+        Notes
+        -----
+        Use :meth:`calc_sigma` to obtain the four backscatter coefficients.
+
         """
         self.theta_rad = np.radians(theta_i)
         self.eps = eps
