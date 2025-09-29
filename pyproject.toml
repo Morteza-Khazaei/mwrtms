@@ -6,3 +6,36 @@ requires = [
   "numpy>=1.21"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "pySSRT"
+dynamic = ["version", "readme", "dependencies"]
+description = "Single Scattering Radiative Transfer model (SSRT) in Python"
+authors = [{name = "Morteza Khazaei", email = "morteza.khazaei@usherbrooke.ca"}]
+license = {file = "LICENSE"}
+keywords = ["radar", "backscatter", "remote sensing", "cython"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+requires-python = ">=3.9"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = {find = {where = ["src"], exclude = ["dataset"]}}
+include-package-data = true
+
+[[tool.setuptools.ext-modules]]
+name = "ssrt.surface._i2em_cy"
+sources = [
+  "src/ssrt/surface/_i2em_cy.pyx"
+]
+
+[tool.setuptools.cmdclass]
+build_ext = "ssrt._build.BuildExt"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+readme = {file = "README.md"}
+dependencies = {file = "requirements.txt"}
