@@ -1,5 +1,10 @@
+import os
 import math
 import numpy as np
+from functools import partial
+from multiprocessing import get_context
+from typing import Iterable, Sequence, Tuple, Optional
+
 from scipy.special import erfc, gamma, kv as besselk, jv as besselj, factorial
 from scipy.integrate import dblquad, quad
 
@@ -324,9 +329,101 @@ else:
     I2EM_BACKEND = "python"
 
 
+def _resolve_backend(backend: str):
+    backend = backend.lower()
+    if backend == "auto":
+        func = I2EM_Bistat_model
+        name = I2EM_BACKEND
+    elif backend == "cython":
+        if _I2EM_Bistat_model_cython is None:
+            raise RuntimeError("Cython backend is unavailable. Rebuild the extension or install build dependencies.")
+        func = _I2EM_Bistat_model_cython
+        name = "cython"
+    elif backend == "python":
+        func = _I2EM_Bistat_model_python
+        name = "python"
+    else:
+        raise ValueError("backend must be one of {'auto', 'cython', 'python'}")
+    return func, name
+
+
+def _i2em_call(args, backend: str):
+    func, _ = _resolve_backend(backend)
+    return func(*args, notify=False)
+
+
 def get_i2em_backend() -> str:
     """Return the active backend identifier."""
     return I2EM_BACKEND
 
 
-__all__ = ["I2EM_Bistat_model", "_I2EM_Bistat_model_python", "I2EM_BACKEND", "get_i2em_backend"]
+def I2EM_Bistat_model_batch(
+    parameters: Iterable[Sequence],
+    *,
+    backend: str = "auto",
+    processes: Optional[int] = os.cpu_count()/3,
+    chunksize: int = 1,
+    mp_start_method: str = "spawn",
+    notify_backend: bool = False,
+) -> Tuple[Tuple[float, float, float, float], ...]:
+    """Evaluate I2EM for many parameter tuples in parallel.
+
+    Parameters
+    ----------
+    parameters:
+        Iterable of argument sequences. Each element must match the positional
+        signature ``(fr, sig, L, thi, ths, phs, er, sp, xx)``.
+    backend:
+        'auto' (default) chooses the active backend, 'cython' forces the
+        compiled version, and 'python' forces the pure-Python fallback.
+    processes:
+        Number of worker processes to use. Defaults to ``os.cpu_count()``.
+    chunksize:
+        Work chunk size forwarded to ``ProcessPoolExecutor.map``.
+    mp_start_method:
+        Multiprocessing start method. Use 'spawn' by default for safety with
+        C extensions; set to 'fork' on POSIX only if you understand the
+        implications.
+    notify_backend:
+        When ``True`` prints the backend that will be used before dispatching.
+
+    Returns
+    -------
+    tuple
+        Tuple of I2EM results in the same order as ``parameters``.
+    """
+
+    _, backend_name = _resolve_backend(backend)
+
+    # Eagerly materialise parameters for repeated iteration and validation
+    params_list = [tuple(p) for p in parameters]
+    if not params_list:
+        return tuple()
+
+    for idx, item in enumerate(params_list):
+        if len(item) != 9:
+            raise ValueError(
+                f"Parameter tuple at index {idx} must contain 9 elements (fr, sig, L, thi, ths, phs, er, sp, xx); got {len(item)}"
+            )
+
+    process_label = processes if processes is not None else "default"
+    if notify_backend:
+        print(f"I2EM_Bistat_model_batch: using {backend_name} backend across {process_label} processes")
+
+    if processes == 1:
+        results = [_i2em_call(args, backend) for args in params_list]
+    else:
+        worker = partial(_i2em_call, backend=backend)
+        with get_context(mp_start_method).Pool(processes=processes) as pool:
+            results = pool.map(worker, params_list, chunksize)
+
+    return tuple(results)
+
+
+__all__ = [
+    "I2EM_Bistat_model",
+    "_I2EM_Bistat_model_python",
+    "I2EM_BACKEND",
+    "get_i2em_backend",
+    "I2EM_Bistat_model_batch",
+]

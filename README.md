@@ -52,6 +52,7 @@ Thanks to `pyproject.toml`, pip will pull in the build requirements (`setuptools
 ```python
 import numpy as np
 from ssrt import S2RTR
+from ssrt.surface.i2em import I2EM_Bistat_model_batch
 
 soil_eps = np.array([5.0 + 2.0j])
 canopy_eps = np.array([12.0 + 3.0j])
@@ -76,6 +77,14 @@ rt = S2RTR(
 sig_ground, sig_soil, sig_total = rt.calc_sigma(todB=True)
 print('Ground VV (dB):', sig_soil['vv'])
 print('Total VV (dB):', sig_total['vv'])
+
+# Parallel I2EM evaluations (auto-selects the compiled backend when available)
+params = [
+    (5.405, 0.02, 0.12, 40.0, 40.0, 180.0, 5.0 + 1.5j, 1, 0.0),
+    (5.405, 0.015, 0.09, 35.0, 35.0, 180.0, 4.0 + 1.0j, 1, 0.0),
+]
+vv, hh, hv, vh = I2EM_Bistat_model_batch(params, processes=4)[0]
+print('First VV (dB):', vv)
 ```
 
 ---
