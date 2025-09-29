@@ -38,6 +38,9 @@ class BuildExt(build_ext):
             self.extensions,
             compiler_directives={"language_level": "3"},
         )
+        for extension in self.extensions:
+            if not hasattr(extension, "_needs_stub"):
+                setattr(extension, "_needs_stub", False)
         self._already_cythonized = True
 
 
