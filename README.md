@@ -34,6 +34,7 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
 
 # install the package in editable mode
  pip install -r requirements.txt
+ pip install --upgrade pip setuptools Cython numpy
  pip install -e .
 ```
 
