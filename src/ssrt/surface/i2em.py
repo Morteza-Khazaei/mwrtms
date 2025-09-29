@@ -3,7 +3,12 @@ import numpy as np
 from scipy.special import erfc, gamma, kv as besselk, jv as besselj, factorial
 from scipy.integrate import dblquad, quad
 
-def I2EM_Bistat_model(fr, sig, L, thi, ths, phs, er, sp, xx):
+try:
+    from ._i2em_cy import I2EM_Bistat_model as _I2EM_Bistat_model_cython
+except ImportError:  # pragma: no cover - fallback only exercised without extension
+    _I2EM_Bistat_model_cython = None
+
+def _I2EM_Bistat_model_python(fr, sig, L, thi, ths, phs, er, sp, xx, notify=False):
     """
     I2EM bistatic scattering model for single-scale random surfaces.
 
@@ -305,4 +310,23 @@ def I2EM_Bistat_model(fr, sig, L, thi, ths, phs, er, sp, xx):
     sigma_0_hv = 10 * np.log10(depol_ratio * np.sqrt(sigmavv * sigmahh))
     sigma_0_vh = sigma_0_hv
 
+    if notify:
+        print("I2EM_Bistat_model: using Python backend")
+
     return sigma_0_vv, sigma_0_hh, sigma_0_hv, sigma_0_vh
+
+
+if _I2EM_Bistat_model_cython is not None:
+    I2EM_Bistat_model = _I2EM_Bistat_model_cython
+    I2EM_BACKEND = "cython"
+else:
+    I2EM_Bistat_model = _I2EM_Bistat_model_python
+    I2EM_BACKEND = "python"
+
+
+def get_i2em_backend() -> str:
+    """Return the active backend identifier."""
+    return I2EM_BACKEND
+
+
+__all__ = ["I2EM_Bistat_model", "_I2EM_Bistat_model_python", "I2EM_BACKEND", "get_i2em_backend"]

@@ -17,6 +17,7 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
 
 - Python 3.9+
 - NumPy, SciPy, Matplotlib, Pandas (see `requirements.txt` for the full list)
+- A C/C++ toolchain when installing from source so the optional Cython extension can compile (e.g. `build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS, or Visual Studio Build Tools on Windows).
 
 ---
 
@@ -35,6 +36,14 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
  pip install -r requirements.txt
  pip install -e .
 ```
+
+You can also install directly from GitHub using pip:
+
+```bash
+pip install git+https://github.com/Morteza-Khazaei/SSRT.git
+```
+
+Thanks to `pyproject.toml`, pip will pull in the build requirements (`setuptools`, `wheel`, `Cython`, and `numpy>=1.21`) before compiling the I2EM Cython extension. Ensure that the system compiler toolchain mentioned above is available; otherwise pip will fall back to the pure-Python implementation of I2EM.
 
 ---
 

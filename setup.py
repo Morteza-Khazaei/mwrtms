@@ -1,4 +1,11 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
+
+try:
+    from Cython.Build import cythonize
+    import numpy as np
+except ImportError:  # pragma: no cover - optional speedup
+    cythonize = None
+    np = None
 
 def read_requirements(file):
     with open(file) as f:
@@ -11,6 +18,17 @@ def read_file(file):
 long_description = read_file('README.md')
 version = read_file('VERSION')
 requirements = read_requirements('requirements.txt')
+
+ext_modules = []
+if cythonize is not None and np is not None:
+    extensions = [
+        Extension(
+            name="ssrt.surface._i2em_cy",
+            sources=["src/ssrt/surface/_i2em_cy.pyx"],
+            include_dirs=[np.get_include()],
+        )
+    ]
+    ext_modules = cythonize(extensions, compiler_directives={"language_level": "3"})
 
 setup(
     name = 'pySSRT',
@@ -28,6 +46,7 @@ setup(
         exclude=['dataset']
     ),  # Don't include test directory in binary distribution
     install_requires = requirements,
+    ext_modules=ext_modules,
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',

@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+src/ssrt/surface/_i2em_cy.c
 
 # Distribution / packaging
 .Python
