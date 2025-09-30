@@ -6,7 +6,7 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
 
 ## Features
 
-- **Soil backscatter models**: AIEM, PRISM1, Dubois95, SMART, SPM3D, and I2EM are exposed through a common interface and can be mixed with vegetation layers via `S2RTR`.
+- **Soil backscatter models**: AIEM (including the corrected Fourier normalisation), PRISM1, Dubois95, SMART, SPM3D, and I2EM are exposed through a common interface and can be mixed with vegetation layers via `S2RTR`.
 - **Canopy integration**: The `S2RTR` core supports diffuse and specular upper-boundary formulations with configurable albedo, extinction coefficient, thickness, and canopy permittivity.
 - **Reference benchmarking**: Ready-to-run Jupyter notebooks validate each soil model against the 40° NMM3D LUT and illustrate SSRT soil–vegetation integration scenarios.
 - **Configurable incidence geometry**: Control incidence and scattering angles, azimuth, and correlation statistics to match experimental or mission conditions.

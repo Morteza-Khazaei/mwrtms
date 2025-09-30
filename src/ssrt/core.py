@@ -1,6 +1,6 @@
 import numpy as np
 from .utils.fresnel import ReflTransm_PlanarBoundary
-from .utils.util import toDB, toPower
+from .utils.util import toDB, toPower, toLambda
 
 
 class S2RTR:
@@ -198,21 +198,34 @@ class S2RTR:
             sig_s = {}
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
-                from aiem import AIEM0
+                from .surface.aiem import AIEM
 
-                # aiem0 = AIEM0(
-                #     frq_GHz=self.f, theta_i=self.theta_i, theta_s=self.theta_s, phi_i=self.phi_i, phi_s=self.phi_s, 
-                #     s=self.s, l=self.cl, eps=self.eps3, acf_type=self.acftype)
-                # sig_s_full = aiem0.run(todB=False).tolist()[0]
-                # sig_s = dict(zip(pol_list, sig_s_full))
-                
-                aiem0 = AIEM0(
-                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl, 
-                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps3)
-                
-                # Run the AIEM model
-                # Note: todB=False to get the results in Power
-                sig_s = aiem0.compute_sigma0(pol='full', todB=False)
+                lambda_m = toLambda(self.f)
+                k = 2.0 * np.pi / lambda_m
+                kl = float(k * self.cl)
+                ks = float(k * self.s)
+                surface_map = {'gauss': 1, 'exp': 2, 'pow': 3}
+                itype = surface_map.get(self.acftype, 1)
+                phi_rel = (self.phi_s - self.phi_i) % 360
+                eps_surface = np.atleast_1d(self.eps3)[0]
+
+                hh_db, vv_db, hv_db, vh_db = AIEM(
+                    theta_i=self.theta_i,
+                    theta_s=self.theta_s,
+                    phi_s=phi_rel,
+                    kl=kl,
+                    ks=ks,
+                    err=float(np.real(eps_surface)),
+                    eri=float(np.imag(eps_surface)),
+                    itype=itype,
+                    add_multiple=False,
+                )
+                sig_s = {
+                    'vv': toPower(vv_db),
+                    'hh': toPower(hh_db),
+                    'hv': toPower(hv_db),
+                    'vh': toPower(vh_db),
+                }
             
             # --- Call the PRISM1 model ---
             if self.RT_s == 'PRISM1':
@@ -284,22 +297,53 @@ class S2RTR:
             
             # --- Call the AIEM model ---
             if self.RT_s == 'AIEM':
-                from aiem import AIEM0
-                # --- Call the AIEM model for the Rayleigh layer ---
-                aiem0 = AIEM0(
-                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
-                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps2)
-                # Run the AIEM model for the Rayleigh layer
-                # Note: todB=False to get the results in Power
-                sig_0_top = aiem0.compute_sigma0(pol='full', todB=False)
-                
-                # --- Call the AIEM model for the ground surface ---
-                aiem1 = AIEM0(
-                    frq_GHz=self.f, acf=self.acftype, s=self.s, l=self.cl,
-                    thi_deg=self.theta_i, ths_deg=self.theta_s, phi_deg=self.phi_i, phs_deg=self.phi_s, eps=self.eps_ratio)
-                # Run the AIEM model for the ground surface
-                sig_0_bot = aiem1.compute_sigma0(pol='full', todB=False)
-                # Note: todB=False to get the results in Power
+                from .surface.aiem import AIEM
+
+                lambda_m = toLambda(self.f)
+                k = 2.0 * np.pi / lambda_m
+                kl = float(k * self.cl)
+                ks = float(k * self.s)
+                surface_map = {'gauss': 1, 'exp': 2, 'pow': 3}
+                itype = surface_map.get(self.acftype, 1)
+                phi_rel = (self.phi_s - self.phi_i) % 360
+
+                eps_top = np.atleast_1d(self.eps2)[0]
+                hh_top_db, vv_top_db, hv_top_db, vh_top_db = AIEM(
+                    theta_i=self.theta_i,
+                    theta_s=self.theta_s,
+                    phi_s=phi_rel,
+                    kl=kl,
+                    ks=ks,
+                    err=float(np.real(eps_top)),
+                    eri=float(np.imag(eps_top)),
+                    itype=itype,
+                    add_multiple=False,
+                )
+                sig_0_top = {
+                    'vv': toPower(vv_top_db),
+                    'hh': toPower(hh_top_db),
+                    'hv': toPower(hv_top_db),
+                    'vh': toPower(vh_top_db),
+                }
+
+                eps_bot = np.atleast_1d(self.eps_ratio)[0]
+                hh_bot_db, vv_bot_db, hv_bot_db, vh_bot_db = AIEM(
+                    theta_i=self.theta_i,
+                    theta_s=self.theta_s,
+                    phi_s=phi_rel,
+                    kl=kl,
+                    ks=ks,
+                    err=float(np.real(eps_bot)),
+                    eri=float(np.imag(eps_bot)),
+                    itype=itype,
+                    add_multiple=False,
+                )
+                sig_0_bot = {
+                    'vv': toPower(vv_bot_db),
+                    'hh': toPower(hh_bot_db),
+                    'hv': toPower(hv_bot_db),
+                    'vh': toPower(vh_bot_db),
+                }
             
             # --- Call the PRISM1 model ---
             elif self.RT_s == 'PRISM1':
