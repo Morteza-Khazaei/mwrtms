@@ -156,8 +156,12 @@ class _MultipleScatteringIntegrator:
                 results[pol] = max(float(np.real(val)), 0.0)
 
             elif pol in {"hv", "vh"}:
+                Ikc = np.real(integrand_kc) * rad  # ADD THIS
                 Ic = np.real(integrand_c) * rad
-                val = (k**2 / (64.0 * np.pi)) * np.sum(Ic * W2D)
+                val = (
+                    (k**2 / (8.0 * np.pi)) * np.sum(Ikc * W2D) +   # kc term
+                    (k**2 / (64.0 * np.pi)) * np.sum(Ic * W2D)     # c term
+                )
                 hv_value = max(float(np.real(val)), 0.0)
                 results["hv"] = hv_value
                 results["vh"] = hv_value
