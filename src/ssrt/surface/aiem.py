@@ -25,6 +25,7 @@ class AIEMParameters:
     theta_i: float
     theta_s: float
     phi_s: float
+    k: float
     kl: float
     ks: float
     err: float
@@ -176,6 +177,7 @@ class AIEMModel:
             er=self.er,
             ks=self.ks,
             kl=self.kl,
+            k=self.params.k,
             surface_label=surface_label,
             polarisations=pols,
         )
@@ -975,6 +977,7 @@ def AIEM(
     theta_i: float,
     theta_s: float,
     phi_s: float,
+    k: float,
     kl: float,
     ks: float,
     err: float,
@@ -989,6 +992,7 @@ def AIEM(
         theta_i=theta_i,
         theta_s=theta_s,
         phi_s=phi_s,
+        k=k,
         kl=kl,
         ks=ks,
         err=err,

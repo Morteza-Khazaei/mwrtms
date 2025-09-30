@@ -55,6 +55,7 @@ def compute_multiple_scattering(
     er: complex,
     ks: float,
     kl: float,
+    k: float,
     surface_label: str,
     polarisations: Sequence[str] = ("hh", "vv", "hv", "vh"),
     n_points: int = 129,
@@ -63,7 +64,7 @@ def compute_multiple_scattering(
     """Evaluate multiple-scattering contributions for the requested polarisations."""
 
     geom = Geometry(theta_i=theta_i, theta_s=theta_s, phi_i=phi_i, phi_s=phi_s)
-    phys = Physics(k=1.0, er=er)
+    phys = Physics(k=k, er=er)
     surf = Surface(type=surface_label.lower(), ks=ks, kl=kl, k=phys.k)
     quad = _build_quadrature(surf, n_points=n_points, nmax=nmax)
 

@@ -137,6 +137,7 @@ def _run_comparison(
             incidence_deg,
             incidence_deg,
             phi_deg,
+            k,
             kl,
             ks,
             float(eps_r),
