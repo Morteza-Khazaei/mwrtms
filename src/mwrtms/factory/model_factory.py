@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from typing import Dict, Type
 
-from ..scattering import AIEMModel, I2EMModel, IEMModel, SSRTModel, ScatteringMechanism
+from ..scattering import (
+    AIEMModel,
+    Dubois95Model,
+    I2EMModel,
+    IEMModel,
+    PRISM1Model,
+    SMARTModel,
+    SPM3DModel,
+    SSRTModel,
+    ScatteringMechanism,
+)
 
 __all__ = ["ScatteringModelFactory", "register_model"]
 
@@ -16,6 +26,10 @@ class ScatteringModelFactory:
         "aiem": AIEMModel,
         "i2em": I2EMModel,
         "iem": IEMModel,
+        "prism1": PRISM1Model,
+        "spm3d": SPM3DModel,
+        "smart": SMARTModel,
+        "dubois95": Dubois95Model,
         "ssrt": SSRTModel,
     }
 

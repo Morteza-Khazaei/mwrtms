@@ -8,9 +8,9 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pySSRT"
+name = "mwRTMs"
 dynamic = ["version", "readme", "dependencies"]
-description = "Single Scattering Radiative Transfer model (SSRT) in Python"
+description = "Microwave Radiative Transfer models with integrated pySSRT solvers"
 authors = [{name = "Morteza Khazaei", email = "morteza.khazaei@usherbrooke.ca"}]
 license = {file = "LICENSE"}
 keywords = ["radar", "backscatter", "remote sensing", "cython"]

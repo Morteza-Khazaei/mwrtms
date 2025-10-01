@@ -14,7 +14,16 @@ from .interface import (
     SurfaceRoughness,
 )
 from .medium import DielectricTensor, IsotropicMedium
-from .scattering import AIEMModel, I2EMModel, IEMModel, SSRTModel
+from .scattering import (
+    AIEMModel,
+    Dubois95Model,
+    I2EMModel,
+    IEMModel,
+    PRISM1Model,
+    SMARTModel,
+    SPM3DModel,
+    SSRTModel,
+)
 
 __all__ = [
     "__version__",
@@ -31,6 +40,10 @@ __all__ = [
     "AIEMModel",
     "I2EMModel",
     "IEMModel",
+    "PRISM1Model",
+    "SPM3DModel",
+    "SMARTModel",
+    "Dubois95Model",
     "SSRTModel",
     "ScatteringModelFactory",
     "mwRTMsFacade",

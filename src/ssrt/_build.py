@@ -1,4 +1,4 @@
-"""Build helpers for pySSRT extension modules."""
+"""Build helpers for mwRTMs extension modules."""
 
 from __future__ import annotations
 

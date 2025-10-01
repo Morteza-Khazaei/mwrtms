@@ -1,48 +1,53 @@
-"""Advanced Integral Equation Method (AIEM) implementation."""
+"""Advanced Integral Equation Method (AIEM) wrapper using pySSRT implementation."""
 
 from __future__ import annotations
 
-import math
+from typing import Dict
 
-from ...core.polarization import PolarizationState
-from ...interface.roughness import SurfaceRoughness
-from .base import SurfaceScattering
+from ssrt.surface.aiem import AIEM
+
+from ...medium.base import Medium
+from ._pyssrt_bridge import PySSRTSurfaceScattering
 
 __all__ = ["AIEMModel"]
 
 
-class AIEMModel(SurfaceScattering):
-    """AIEM surface scattering model demonstrating inheritance and encapsulation."""
+class AIEMModel(PySSRTSurfaceScattering):
+    """Expose the legacy pySSRT AIEM solver through the mwRTMs interface."""
 
     MODEL_NAME = "AIEM"
-    __slots__ = ("_include_multiple", "_series_order")
-    _mutable_slots: set[str] = set()
+    __slots__ = ("_include_multiple",)
 
-    def __init__(self, wave, geometry, surface_roughness: SurfaceRoughness, include_multiple: bool = True) -> None:
-        super().__init__(wave, geometry, surface_roughness)
+    def __init__(self, wave, geometry, surface_roughness, *, include_multiple: bool = True, acf_override: str | None = None) -> None:
+        super().__init__(wave, geometry, surface_roughness, acf_override=acf_override)
         self._include_multiple = bool(include_multiple)
-        self._series_order = 6
 
-    def __setattr__(self, name, value):
-        if name in self.__slots__ and hasattr(self, name) and name not in self._mutable_slots:
-            raise AttributeError(f"{self.__class__.__name__} attribute {name!r} is read-only")
-        super().__setattr__(name, value)
+    def _run_pyssrt_model(self, medium_above: Medium, medium_below: Medium) -> Dict[str, float]:
+        acf_label, _ = self._acf_descriptor()
+        surface_map = {"gauss": 1, "exp": 2, "pow": 3}
+        surface_type = surface_map.get(acf_label, 2)
 
-    def _compute_kirchhoff(self, fresnel: dict[str, complex], polarization: PolarizationState) -> float:
-        pol_key = "v" if polarization in (PolarizationState.VV, PolarizationState.V) else "h"
-        reflection = fresnel[pol_key]
-        theta = self.geometry.theta_i
-        slope = math.exp(-(self.wave.wavenumber * self.roughness.rms_height * math.cos(theta)) ** 2)
-        return self._prefactor() * abs(reflection) ** 2 * slope
+        permittivity = medium_below.permittivity(self.wave.frequency_hz)
+        theta_i = self.geometry.theta_i_deg
+        theta_s = self.geometry.theta_s_deg
+        phi_rel = (self.geometry.phi_s_deg - self.geometry.phi_i_deg) % 360.0
 
-    def _compute_complementary(self, fresnel: dict[str, complex], polarization: PolarizationState) -> float:
-        if polarization in (PolarizationState.HV, PolarizationState.VH):
-            return 0.0
-        weight = 0.0
-        ks = self.wave.wavenumber * self.roughness.rms_height
-        for order in range(1, self._series_order + 1):
-            spectrum = self._surface_spectrum(order, 0.0, 0.0)
-            weight += (ks ** (2 * order) / math.factorial(order)) * spectrum
-        if not self._include_multiple:
-            weight *= 0.5
-        return 0.25 * abs(fresnel["v"] - fresnel["h"]) ** 2 * weight
+        k = self.wave.wavenumber
+        kl = float(k * self.roughness.correlation_length)
+        ks = float(k * self.roughness.rms_height)
+
+        hh, vv, hv, vh = AIEM(
+            theta_i=theta_i,
+            theta_s=theta_s,
+            phi_s=phi_rel,
+            k=k,
+            kl=kl,
+            ks=ks,
+            err=float(permittivity.real),
+            eri=float(permittivity.imag),
+            itype=surface_type,
+            addMultiple=self._include_multiple,
+            output_unit="linear",
+        )
+
+        return {"hh": float(hh), "vv": float(vv), "hv": float(hv), "vh": float(vh)}
