@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.aiem import AIEM
+from ...pyssrt.surface.aiem import AIEM
 
 from ...medium.base import Medium
 from ._pyssrt_bridge import PySSRTSurfaceScattering

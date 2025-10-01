@@ -28,8 +28,8 @@ from typing import Dict, Iterable, List, Sequence
 
 import numpy as np
 
-from ssrt.surface.aiem import AIEM
-from ssrt.utils.util import toLambda
+from mwrtms.pyssrt.surface.aiem import AIEM
+from mwrtms.pyssrt.utils.util import toLambda
 
 # Default configuration mirrors the notebook
 _DEFAULT_LUT = Path("data/NMM3D_LUT_NRCS_40degree.dat")

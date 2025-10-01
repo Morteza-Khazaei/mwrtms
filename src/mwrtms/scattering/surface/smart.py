@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.smart import SMART
+from ...pyssrt.surface.smart import SMART
 
 from ...medium.base import Medium
 from ._pyssrt_bridge import PySSRTSurfaceScattering

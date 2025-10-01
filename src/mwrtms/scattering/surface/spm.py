@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.spm import SPM3D
+from ...pyssrt.surface.spm import SPM3D
 
 from ...medium.base import Medium
 from ._pyssrt_bridge import PySSRTSurfaceScattering

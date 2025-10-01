@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.i2em import I2EM_Bistat_model
+from ...pyssrt.surface.i2em import I2EM_Bistat_model
 
 from ...medium.base import Medium
 from ...utils.pyssrt import db_to_power

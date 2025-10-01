@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.dubois95 import Dubois95
+from ...pyssrt.surface.dubois95 import Dubois95
 
 from ...medium.base import Medium
 from ._pyssrt_bridge import PySSRTSurfaceScattering

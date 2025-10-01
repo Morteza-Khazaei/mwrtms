@@ -27,13 +27,13 @@ packages = {find = {where = ["src"], exclude = ["dataset"]}}
 include-package-data = true
 
 [[tool.setuptools.ext-modules]]
-name = "ssrt.surface._i2em_cy"
+name = "mwrtms.pyssrt.surface._i2em_cy"
 sources = [
-  "src/ssrt/surface/_i2em_cy.pyx"
+  "src/mwrtms/pyssrt/surface/_i2em_cy.pyx"
 ]
 
 [tool.setuptools.cmdclass]
-build_ext = "ssrt._build.BuildExt"
+build_ext = "mwrtms.pyssrt._build.BuildExt"
 
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}

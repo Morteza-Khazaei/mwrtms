@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from ssrt.core import S2RTR
+from ...pyssrt.core import S2RTR
 
 from ...core.polarization import PolarizationState
 from ...interface.roughness import SurfaceRoughness

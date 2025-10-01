@@ -1,15 +1,26 @@
-# SSRT
+# mwRTMs
 
-Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating radar backscatter from vegetated surfaces. It couples first-order surface scattering models with a layered canopy representation so you can explore how soil dielectric, roughness, and vegetation structure jointly control the microwave response.
+mwRTMs (Microwave Radiative Transfer models) is a Python toolbox for simulating
+microwave backscatter from rough surfaces and layered vegetation canopies.  It
+wraps the legacy pySSRT solvers inside a modern object-oriented interface that
+harmonises surface and volume scattering models under a single API.
 
 ---
 
 ## Features
 
-- **Soil backscatter models**: AIEM (including the corrected Fourier normalisation), PRISM1, Dubois95, SMART, SPM3D, and I2EM are exposed through a common interface and can be mixed with vegetation layers via `S2RTR`.
-- **Canopy integration**: The `S2RTR` core supports diffuse and specular upper-boundary formulations with configurable albedo, extinction coefficient, thickness, and canopy permittivity.
-- **Reference benchmarking**: Ready-to-run Jupyter notebooks validate each soil model against the 40° NMM3D LUT and illustrate SSRT soil–vegetation integration scenarios.
-- **Configurable incidence geometry**: Control incidence and scattering angles, azimuth, and correlation statistics to match experimental or mission conditions.
+- **Surface backscatter portfolio**: AIEM, PRISM1, Dubois95, SMART, SPM3D, and
+  I2EM are exposed through a shared interface with automatic polarisation and
+  autocorrelation handling.
+- **Canopy–soil coupling**: The SSRT canopy-plus-soil solver is available via
+  the volume-scattering hierarchy, enabling quick comparisons between soil
+  roughness statistics and vegetation descriptors.
+- **Consistent abstractions**: `ElectromagneticWave`, `ScatteringGeometry`, and
+  `SurfaceRoughness` objects enforce unit conversions and caching so solver
+  implementations can focus on the physics rather than book-keeping.
+- **Reference utilities**: Legacy helper routines (Dobson85 dielectric model,
+  Fresnel reflectivities, power/decibel conversions) remain accessible under the
+  `mwrtms.pyssrt.utils` namespace for backwards compatibility.
 
 ---
 
@@ -17,7 +28,9 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
 
 - Python 3.9+
 - NumPy, SciPy, Matplotlib, Pandas (see `requirements.txt` for the full list)
-- A C/C++ toolchain when installing from source so the optional Cython extension can compile (e.g. `build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS, or Visual Studio Build Tools on Windows).
+- A C/C++ toolchain to build the optional I2EM Cython extension (`build-essential`
+  on Debian/Ubuntu, Xcode Command Line Tools on macOS, or Visual Studio Build
+  Tools on Windows).
 
 ---
 
@@ -25,67 +38,64 @@ Single Scattering Radiative Transfer (SSRT) is a Python toolbox for simulating r
 
 ```bash
 # clone the repository
- git clone https://github.com/<your-org>/SSRT.git
- cd SSRT
+git clone https://github.com/<your-org>/mwRTMs.git
+cd mwRTMs
 
 # (optional) create a virtual environment
- python -m venv .venv
- source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 # install the package in editable mode
- pip install -r requirements.txt
- pip install --upgrade pip setuptools Cython numpy
- pip install -e .
+pip install -r requirements.txt
+pip install --upgrade pip setuptools Cython numpy
+pip install -e .
 ```
 
 You can also install directly from GitHub using pip:
 
 ```bash
-pip install git+https://github.com/Morteza-Khazaei/SSRT.git
+pip install git+https://github.com/Morteza-Khazaei/mwRTMs.git
 ```
 
-Thanks to `pyproject.toml`, pip will pull in the build requirements (`setuptools`, `wheel`, `Cython`, and `numpy>=1.21`) before compiling the I2EM Cython extension. Ensure that the system compiler toolchain mentioned above is available; otherwise pip will fall back to the pure-Python implementation of I2EM.
+Thanks to `pyproject.toml`, pip will pull in the build requirements
+(`setuptools`, `wheel`, `Cython`, and `numpy>=1.21`) before compiling the I2EM
+Cython extension. If the compiler toolchain is unavailable pip automatically
+falls back to the pure-Python I2EM backend.
 
 ---
 
 ## Quick Start
 
 ```python
-import numpy as np
-from ssrt import S2RTR
-from ssrt.surface.i2em import I2EM_Bistat_model_batch
-
-soil_eps = np.array([5.0 + 2.0j])
-canopy_eps = np.array([12.0 + 3.0j])
-
-rt = S2RTR(
-    frq_GHz=5.405,
-    theta_i=40.0,
-    theta_s=40.0,
-    phi_i=0.0,
-    phi_s=180.0,
-    s=0.03,          # soil RMS height (m)
-    cl=0.12,         # correlation length (m)
-    eps2=canopy_eps,
-    eps3=soil_eps,
-    a=0.08,
-    kappa_e=0.7,     # extinction coefficient (Np/m)
-    d=0.35,          # canopy thickness (m)
-    acftype='exp',   # soil autocorrelation (exp, gauss, pow)
-    RT_models={'RT_s': 'SPM3D', 'RT_c': 'Spec'}
+from mwrtms import (
+    ElectromagneticWave,
+    IsotropicMedium,
+    PolarizationState,
+    ScatteringGeometry,
+    SurfaceRoughness,
+    SSRTModel,
 )
 
-sig_ground, sig_soil, sig_total = rt.calc_sigma(todB=True)
-print('Ground VV (dB):', sig_soil['vv'])
-print('Total VV (dB):', sig_total['vv'])
+wave = ElectromagneticWave(frequency_ghz=5.405)
+geometry = ScatteringGeometry(theta_i_deg=40.0, theta_s_deg=40.0, phi_s_deg=180.0)
+roughness = SurfaceRoughness(rms_height=0.02, correlation_length=0.1)
 
-# Parallel I2EM evaluations (auto-selects the compiled backend when available)
-params = [
-    (5.405, 0.02, 0.12, 40.0, 40.0, 180.0, 5.0 + 1.5j, 1, 0.0),
-    (5.405, 0.015, 0.09, 35.0, 35.0, 180.0, 4.0 + 1.0j, 1, 0.0),
-]
-vv, hh, hv, vh = I2EM_Bistat_model_batch(params, processes=4)[0]
-print('First VV (dB):', vv)
+canopy = IsotropicMedium(permittivity=12.0 + 3.0j)
+soil = IsotropicMedium(permittivity=5.0 + 1.0j)
+
+ssrt = SSRTModel(
+    wave,
+    geometry,
+    roughness,
+    single_scatter_albedo=0.08,
+    extinction_coefficient=0.5,
+    canopy_thickness=0.3,
+    surface_model="I2EM",
+    canopy_model="Diff",
+)
+
+sigma_vv = ssrt.backscatter(canopy, soil, polarization=PolarizationState.VV)
+print(f"Total VV backscatter: {sigma_vv:.3f} [linear]")
 ```
 
 ---
@@ -103,7 +113,7 @@ Located under `test/`:
 | `test_dubois95.ipynb` | Dubois95 LUT comparison. |
 | `test_ssrt.ipynb` | Soil–vegetation integration demo with incidence/extinction sweeps. |
 
-To launch:
+Launch a notebook with:
 
 ```bash
 jupyter notebook test/test_ssrt.ipynb
@@ -113,9 +123,11 @@ jupyter notebook test/test_ssrt.ipynb
 
 ## Testing & Validation
 
-1. Run unit-style scripts or notebooks each time you modify a soil model.
-2. Use the LUT notebooks to confirm backscatter errors remain within acceptable tolerances (≈1 dB for VV/HH).
-3. For vegetation scenarios, rerun the `test_ssrt.ipynb` canopy sweeps to gauge sensitivity to new parameter ranges.
+1. Run the unit-style scripts in `test/` after modifying a soil model.
+2. Use the LUT notebooks to confirm backscatter errors remain within acceptable
+   tolerances (≈1 dB for VV/HH).
+3. For vegetation scenarios, rerun the `test_ssrt.ipynb` canopy sweeps to gauge
+   sensitivity to new parameter ranges.
 
 ---
 
@@ -136,4 +148,6 @@ This project is released under the MIT License. See `LICENSE` for details.
 
 ## Citing
 
-If you use SSRT in academic work, please cite the repository and the relevant model references (AIEM, PRISM1, Dubois95, SMART, SPM3D, I2EM) as appropriate.
+If you use mwRTMs in academic work, please cite the repository and the relevant
+model references (AIEM, PRISM1, Dubois95, SMART, SPM3D, I2EM, SSRT) as
+appropriate.

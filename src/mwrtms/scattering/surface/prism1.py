@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ssrt.surface.prism1 import PRISM1
+from ...pyssrt.surface.prism1 import PRISM1
 
 from ...medium.base import Medium
 from ._pyssrt_bridge import PySSRTSurfaceScattering
