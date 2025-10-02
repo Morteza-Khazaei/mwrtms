@@ -13,8 +13,17 @@ from .interface import (
     PowerLawCorrelation,
     SurfaceRoughness,
 )
-from .medium import DielectricTensor, IsotropicMedium
-from .scattering import AIEMModel, I2EMModel, IEMModel, SSRTModel
+from .medium import DielectricTensor, IsotropicMedium, MironovSoilMedium, mironov_permittivity
+from .scattering import (
+    AIEMModel,
+    Dubois95Model,
+    I2EMModel,
+    IEMModel,
+    PRISM1Model,
+    SMARTModel,
+    SPM3DModel,
+    SSRTModel,
+)
 
 __all__ = [
     "__version__",
@@ -28,9 +37,15 @@ __all__ = [
     "PowerLawCorrelation",
     "DielectricTensor",
     "IsotropicMedium",
+    "MironovSoilMedium",
+    "mironov_permittivity",
     "AIEMModel",
     "I2EMModel",
     "IEMModel",
+    "PRISM1Model",
+    "SPM3DModel",
+    "SMARTModel",
+    "Dubois95Model",
     "SSRTModel",
     "ScatteringModelFactory",
     "mwRTMsFacade",
