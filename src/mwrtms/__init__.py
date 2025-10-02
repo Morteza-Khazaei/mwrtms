@@ -19,6 +19,7 @@ from .medium import (
     MironovSoilMedium,
     mironov_permittivity,
     FresnelCoefficients,
+    HomogeneousMedium,
 )
 from .medium.surface import (
     Surface,
@@ -33,6 +34,7 @@ from .medium.surface import (
     Gaussian,
     PowerLaw,
 )
+from .integration import ScatteringScene
 from .scattering import (
     ScatteringMechanism,
     SurfaceScattering,
@@ -55,6 +57,8 @@ __all__ = [
     "VegetationMedium",
     "MironovSoilMedium",
     "mironov_permittivity",
+    "HomogeneousMedium",
+    "ScatteringScene",
     "FresnelCoefficients",
     "ObservationMode",
     "RadarConfiguration",
@@ -72,6 +76,7 @@ __all__ = [
     "MeasuredSurfaceLoader",
     "CompositeSurfaceGenerator",
     "build_surface_from_statistics",
+    "ScatteringScene",
     "ScatteringMechanism",
     "SurfaceScattering",
     "AIEMModel",
@@ -83,4 +88,3 @@ __all__ = [
     "mwRTMs",
     "mwRTMsFacade",
 ]
-

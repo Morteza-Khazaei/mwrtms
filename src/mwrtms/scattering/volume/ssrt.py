@@ -38,7 +38,12 @@ class SSRTModel(VolumeScattering):
     def __init__(self, wave, geometry, canopy_properties: CanopyProperties, soil_backscatter: dict[str, float]) -> None:
         super().__init__(wave, geometry)
         self._canopy = canopy_properties
-        self._soil_sigma0 = dict(soil_backscatter)
+        self._soil_sigma0 = {}
+        for key, value in soil_backscatter.items():
+            if isinstance(key, str):
+                self._soil_sigma0[key.lower()] = float(value)
+            else:
+                self._soil_sigma0[getattr(key, "value", str(key)).lower()] = float(value)
 
     def compute(self, medium_above, medium_below, polarization) -> float:
         sigma_vol = self._compute_volume_scattering(medium_below, polarization)

@@ -2,7 +2,12 @@
 
 from .constants import EPSILON_0, MU_0, PLANCK_CONSTANT, SPEED_OF_LIGHT
 from .geometry import ScatteringGeometry
-from .polarization import PolarizationState
+from .polarization import (
+    PolarizationState,
+    default_polarization_order,
+    normalize_polarization,
+    normalize_polarization_sequence,
+)
 from .wave import ElectromagneticWave
 
 from .radar_modes import (
@@ -21,6 +26,9 @@ __all__ = [
     "ElectromagneticWave",
     "ScatteringGeometry",
     "PolarizationState",
+    "default_polarization_order",
+    "normalize_polarization",
+    "normalize_polarization_sequence",
     "ObservationMode",
     "RadarConfiguration",
     "MonostaticConfiguration",

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from ..core import ElectromagneticWave, PolarizationState, RadarConfiguration
-from ..factory import ScatteringModelFactory
-from ..medium.surface import build_surface_from_statistics
-from ..medium import Medium
+from typing import Iterable, Union
+
+from ..core import PolarizationState, RadarConfiguration
+from ..core.polarization import normalize_polarization
+from ..integration import ScatteringScene
+from ..result.scattering import ScatteringResult
 
 __all__ = ["mwRTMs"]
+
+
+PolarizationInput = Union[PolarizationState, str, Iterable[Union[PolarizationState, str]], None]
 
 
 class mwRTMs:
@@ -22,39 +27,27 @@ class mwRTMs:
         correlation_length_cm: float,
         soil_permittivity: complex,
         correlation: str = "exponential",
-        polarization: PolarizationState = PolarizationState.VV,
+        polarization: PolarizationInput = None,
         **model_kwargs,
-    ) -> float:
-        """Return the backscatter coefficient (linear) for a radar configuration."""
+    ) -> Union[float, ScatteringResult]:
+        """Run a surface scattering model backed by the :class:`ScatteringScene` helper.
 
-        corr_type = correlation.lower()
-        if corr_type not in {"exponential", "gaussian", "powerlaw"}:
-            raise ValueError(f"Unknown correlation type: {correlation}")
+        When ``polarization`` is ``None`` all default channels are simulated and a
+        :class:`ScatteringResult` is returned. Passing a single polarization keeps
+        the historical scalar return behaviour.
+        """
 
-        wave = ElectromagneticWave(frequency_hz=frequency_ghz * 1e9)
-        surface = build_surface_from_statistics(
-            rms_height_cm / 100.0,
-            correlation_length_cm / 100.0,
-            correlation_type=corr_type,
+        scene = ScatteringScene.soil_scene(
+            radar_config=radar_config,
+            frequency_ghz=frequency_ghz,
+            soil_permittivity=soil_permittivity,
+            rms_height_cm=rms_height_cm,
+            correlation_length_cm=correlation_length_cm,
+            correlation=correlation,
         )
 
-        class _ConstantMedium(Medium):
-            def __init__(self, permittivity: complex) -> None:
-                super().__init__(temperature_k=293.15)
-                self._eps = permittivity
-
-            def permittivity(self, frequency_hz: float) -> complex:  # pragma: no cover - trivial
-                return self._eps
-
-        air = _ConstantMedium(1.0 + 0.0j)
-        soil = _ConstantMedium(soil_permittivity)
-
-        model_instance = ScatteringModelFactory.create_with_radar_config(
-            model,
-            config=radar_config,
-            wave=wave,
-            surface=surface,
-            **model_kwargs,
-        )
-
-        return model_instance.compute_with_config(air, soil, polarization, radar_config)
+        result = scene.run_model(model, polarizations=polarization, model_kwargs=model_kwargs)
+        pol_tuple = normalize_polarization(polarization)
+        if len(pol_tuple) == 1:
+            return result[pol_tuple[0]]
+        return result

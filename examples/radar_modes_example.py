@@ -10,21 +10,11 @@ from mwrtms import (
     RadarConfigurationFactory,
     RadarConfiguration,
     ScatteringGeometry,
+    ScatteringScene,
+    mwRTMsFacade,
 )
-from mwrtms.factory import ScatteringModelFactory
-from mwrtms.medium import Medium
+from mwrtms.medium import HomogeneousMedium
 from mwrtms.medium.surface import build_surface_from_statistics
-from mwrtms.scattering.surface import SPMModel
-from mwrtms.facade import mwRTMsFacade
-
-
-class _ConstantMedium(Medium):
-    def __init__(self, permittivity: complex) -> None:
-        super().__init__(temperature_k=293.15)
-        self._eps = permittivity
-
-    def permittivity(self, frequency_hz: float) -> complex:  # pragma: no cover - example helper
-        return self._eps
 
 
 def _print_result(label: str, sigma: float) -> None:
@@ -35,18 +25,15 @@ def monostatic_example() -> None:
     config = RadarConfigurationFactory.create_monostatic(theta_deg=40.0)
     wave = ElectromagneticWave(frequency_hz=5.405e9)
     surface = build_surface_from_statistics(0.008, 0.04)
-
-    air = _ConstantMedium(1.0 + 0.0j)
-    soil = _ConstantMedium(12.0 + 2.5j)
-
-    model = ScatteringModelFactory.create_with_radar_config(
-        "spm",
-        config=config,
+    scene = ScatteringScene(
+        radar_config=config,
         wave=wave,
+        medium_above=HomogeneousMedium(1.0 + 0.0j),
+        medium_below=HomogeneousMedium(12.0 + 2.5j),
         surface=surface,
     )
-    sigma_vv = model.compute_with_config(air, soil, PolarizationState.VV, config)
-    _print_result("Monostatic σ₀(VV)", sigma_vv)
+    result = scene.run_model("spm")
+    _print_result("Monostatic σ₀(VV)", result[PolarizationState.VV])
 
 
 def bistatic_example() -> None:
@@ -58,16 +45,15 @@ def bistatic_example() -> None:
     wave = ElectromagneticWave(frequency_hz=5.405e9)
     surface = build_surface_from_statistics(0.005, 0.03)
 
-    air = _ConstantMedium(1.0 + 0.0j)
-    soil = _ConstantMedium(8.0 + 1.5j)
-
-    model = ScatteringModelFactory.create_with_radar_config(
-        "spm",
-        config=config,
+    scene = ScatteringScene(
+        radar_config=config,
         wave=wave,
+        medium_above=HomogeneousMedium(1.0 + 0.0j),
+        medium_below=HomogeneousMedium(8.0 + 1.5j),
         surface=surface,
     )
-    sigma_vv = model.compute_with_config(air, soil, PolarizationState.VV, config)
+    result = scene.run_model("spm")
+    sigma_vv = result[PolarizationState.VV]
     angle = config.bistatic_angle()
     _print_result(f"Bistatic σ₀(VV) (angle {angle:.1f}°)", sigma_vv)
 
@@ -77,17 +63,15 @@ def multi_angle_example() -> None:
     wave = ElectromagneticWave(frequency_hz=1.0e9)
     surface = build_surface_from_statistics(0.004, 0.02)
 
-    air = _ConstantMedium(1.0 + 0.0j)
-    soil = _ConstantMedium(5.0 + 0.5j)
-
     for cfg in configs:
-        model = ScatteringModelFactory.create_with_radar_config(
-            "spm",
-            config=cfg,
+        scene = ScatteringScene(
+            radar_config=cfg,
             wave=wave,
+            medium_above=HomogeneousMedium(1.0 + 0.0j),
+            medium_below=HomogeneousMedium(5.0 + 0.5j),
             surface=surface,
         )
-        sigma_hh = model.compute_with_config(air, soil, PolarizationState.HH, cfg)
+        sigma_hh = scene.run_scalar("spm", PolarizationState.HH)
         _print_result(f"Multi-angle θ={cfg.look_angle_deg:.1f}° σ₀(HH)", sigma_hh)
 
 
@@ -123,16 +107,14 @@ def compute_with_config_usage() -> None:
     wave = ElectromagneticWave(frequency_hz=3.0e9)
     surface = build_surface_from_statistics(0.002, 0.015)
 
-    air = _ConstantMedium(1.0 + 0.0j)
-    soil = _ConstantMedium(6.0 + 0.9j)
-
-    model = ScatteringModelFactory.create_with_radar_config(
-        "spm",
-        config=config,
+    scene = ScatteringScene(
+        radar_config=config,
         wave=wave,
+        medium_above=HomogeneousMedium(1.0 + 0.0j),
+        medium_below=HomogeneousMedium(6.0 + 0.9j),
         surface=surface,
     )
-    sigma_hv = model.compute_with_config(air, soil, PolarizationState.HV, config)
+    sigma_hv = scene.run_scalar("spm", PolarizationState.HV)
     _print_result("Compute-with-config σ₀(HV)", sigma_hv)
 
 

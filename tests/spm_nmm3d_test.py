@@ -8,7 +8,7 @@ import numpy as np
 
 from mwrtms.core import ElectromagneticWave, PolarizationState, ScatteringGeometry
 from mwrtms.medium.surface import build_surface_from_statistics
-from mwrtms.medium import Medium
+from mwrtms.medium import HomogeneousMedium
 from mwrtms.scattering.surface import SPMModel
 
 _DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "NMM3D_LUT_NRCS_40degree.dat"
@@ -28,17 +28,7 @@ def test_spm3d_matches_nmm3d_within_tolerance() -> None:
     wave = ElectromagneticWave(_FREQUENCY_GHZ * 1e9)
     geometry = ScatteringGeometry(theta_i_deg=_INCIDENT_ANGLE_DEG)
 
-    class _ConstantMedium(Medium):
-        __slots__ = ("_eps",)
-
-        def __init__(self, permittivity: complex) -> None:
-            super().__init__(_TEMPERATURE_K)
-            self._eps = permittivity
-
-        def permittivity(self, frequency_hz: float) -> complex:
-            return self._eps
-
-    air = _ConstantMedium(1.0 + 0.0j)
+    air = HomogeneousMedium(1.0 + 0.0j, temperature_k=_TEMPERATURE_K)
 
     lambda_m = wave.wavelength
 
@@ -63,12 +53,13 @@ def test_spm3d_matches_nmm3d_within_tolerance() -> None:
             correlation_type="exponential",
         )
 
-        soil = _ConstantMedium(complex(eps_r, eps_i))
+        soil = HomogeneousMedium(complex(eps_r, eps_i), temperature_k=_TEMPERATURE_K)
         model = SPMModel(wave, geometry, surface)
 
-        sigma_vv = model.compute(air, soil, PolarizationState.VV)
-        sigma_hh = model.compute(air, soil, PolarizationState.HH)
-        sigma_hv = model.compute(air, soil, PolarizationState.HV)
+        result = model.run(air, soil)
+        sigma_vv = result[PolarizationState.VV]
+        sigma_hh = result[PolarizationState.HH]
+        sigma_hv = result[PolarizationState.HV]
 
         vv_errors.append(_to_db(sigma_vv) - vv_ref)
         hh_errors.append(_to_db(sigma_hh) - hh_ref)

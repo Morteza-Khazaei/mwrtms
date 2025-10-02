@@ -4,6 +4,7 @@ from .base import Medium
 from .soil import SoilMedium
 from .vegetation import VegetationMedium
 from .dielectric import DobsonModel, MironovModel, VegetationMaterialModel
+from .homogeneous import HomogeneousMedium
 from .interface import FresnelCoefficients
 from .surface import (
     Surface,
@@ -26,6 +27,7 @@ __all__ = [
     "DobsonModel",
     "MironovModel",
     "VegetationMaterialModel",
+    "HomogeneousMedium",
     "Surface",
     "SurfaceAnalyzer",
     "SurfaceGenerator",
