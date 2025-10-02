@@ -28,8 +28,8 @@ class SPMModel(SurfaceScattering):
 
     def _spm_backscatter(self, medium_above, medium_below, polarization, R_h, R_v) -> float:
         theta = self._geometry.theta_i_rad
-        sigma = self._roughness.rms_height()
-        ell = self._roughness.correlation_length()
+        sigma = self._surface.rms_height()
+        ell = self._surface.correlation_length()
 
         eps1 = medium_above.permittivity(self._wave.frequency_hz)
         eps2 = medium_below.permittivity(self._wave.frequency_hz)
@@ -63,8 +63,22 @@ class SPMModel(SurfaceScattering):
             * cos_t**4
         )
 
+        sigma_vv = np.real(prefactor * term_v)
+        sigma_hh = np.real(prefactor * term_h)
+
+        sqrt_eps = np.sqrt(max(np.real(eps2), 0.0))
+        if sqrt_eps + 1.0 > 0.0:
+            ratio_term = max((sqrt_eps - 1.0) / (sqrt_eps + 1.0), 0.0)
+        else:
+            ratio_term = 0.0
+        hv_coeff = 0.23 * np.sqrt(ratio_term)
+        krms = k_inc * sigma
+        sigma_hv = hv_coeff * (1.0 - np.exp(-krms)) * sigma_vv
+
         if polarization.value in ("vv", "v"):
-            return float(np.real(prefactor * term_v))
+            return float(max(sigma_vv, 0.0))
         if polarization.value in ("hh", "h"):
-            return float(np.real(prefactor * term_h))
+            return float(max(sigma_hh, 0.0))
+        if polarization.value in ("hv", "vh"):
+            return float(max(sigma_hv, 0.0))
         return 0.0

@@ -5,7 +5,6 @@ import numpy as np
 from mwrtms import mwRTMs
 from mwrtms.core import ElectromagneticWave, ScatteringGeometry, PolarizationState
 from mwrtms.medium import SoilMedium, VegetationMedium
-from mwrtms.interface import ExponentialCorrelation, IsotropicRoughness
 from mwrtms.scattering.volume import SSRTModel, CanopyProperties
 
 

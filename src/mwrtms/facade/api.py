@@ -8,13 +8,7 @@ import numpy as np
 
 from ..core import ElectromagneticWave, PolarizationState, ScatteringGeometry
 from ..factory import ScatteringModelFactory
-from ..interface import (
-    AnisotropicRoughness,
-    ExponentialCorrelation,
-    GaussianCorrelation,
-    IsotropicRoughness,
-    PowerLawCorrelation,
-)
+from ..medium.surface import build_surface_from_statistics
 from ..medium import Medium, SoilMedium
 
 __all__ = ["mwRTMs"]
@@ -44,30 +38,20 @@ class mwRTMs:
         wave = ElectromagneticWave(frequency_hz=frequency_ghz * 1e9)
         geometry = ScatteringGeometry(theta_i_deg=incident_angle_deg, theta_s_deg=incident_angle_deg, phi_s_deg=180.0)
 
-        if correlation_type == "exponential":
-            corr_func = ExponentialCorrelation()
-        elif correlation_type == "gaussian":
-            corr_func = GaussianCorrelation()
-        elif correlation_type == "powerlaw":
-            corr_func = PowerLawCorrelation()
-        else:
+        corr_length_m = correlation_length_cm / 100.0
+        if correlation_type not in {"exponential", "gaussian", "powerlaw"}:
             raise ValueError(f"Unknown correlation type: {correlation_type}")
 
-        if anisotropic:
-            if correlation_length_y_cm is None:
-                raise ValueError("correlation_length_y_cm required for anisotropic roughness")
-            roughness = AnisotropicRoughness(
-                rms_height_m=rms_height_cm / 100.0,
-                correlation_length_x_m=correlation_length_cm / 100.0,
-                correlation_length_y_m=correlation_length_y_cm / 100.0,
-                correlation_function=corr_func,
-            )
-        else:
-            roughness = IsotropicRoughness(
-                rms_height_m=rms_height_cm / 100.0,
-                correlation_length_m=correlation_length_cm / 100.0,
-                correlation_function=corr_func,
-            )
+        corr_length_y_m = correlation_length_y_cm / 100.0 if correlation_length_y_cm is not None else None
+        if anisotropic and corr_length_y_m is None:
+            raise ValueError("correlation_length_y_cm required for anisotropic surfaces")
+
+        surface = build_surface_from_statistics(
+            rms_height_cm / 100.0,
+            corr_length_m,
+            correlation_length_y_m=corr_length_y_m,
+            correlation_type=correlation_type,
+        )
 
         soil = SoilMedium(
             moisture_m3m3=soil_moisture,
@@ -85,7 +69,7 @@ class mwRTMs:
             model,
             wave=wave,
             geometry=geometry,
-            surface_roughness=roughness,
+            surface=surface,
             **model_kwargs,
         )
 

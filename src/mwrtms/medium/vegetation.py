@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..dielectric import VegetationMaterialModel
+from .dielectric import VegetationMaterialModel
 from .base import Medium
 
 __all__ = ["VegetationMedium"]

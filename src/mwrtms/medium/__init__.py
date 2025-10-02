@@ -3,12 +3,41 @@
 from .base import Medium
 from .soil import SoilMedium
 from .vegetation import VegetationMedium
-from ..dielectric import MironovModel
+from .dielectric import DobsonModel, MironovModel, VegetationMaterialModel
+from .interface import FresnelCoefficients
+from .surface import (
+    Surface,
+    SurfaceAnalyzer,
+    SurfaceGenerator,
+    SyntheticSurfaceGenerator,
+    MeasuredSurfaceLoader,
+    CompositeSurfaceGenerator,
+    build_surface_from_statistics,
+    CorrelationFunction,
+    Exponential,
+    Gaussian,
+    PowerLaw,
+)
 
 __all__ = [
     "Medium",
     "SoilMedium",
     "VegetationMedium",
+    "DobsonModel",
+    "MironovModel",
+    "VegetationMaterialModel",
+    "Surface",
+    "SurfaceAnalyzer",
+    "SurfaceGenerator",
+    "SyntheticSurfaceGenerator",
+    "MeasuredSurfaceLoader",
+    "CompositeSurfaceGenerator",
+    "build_surface_from_statistics",
+    "CorrelationFunction",
+    "Exponential",
+    "Gaussian",
+    "PowerLaw",
+    "FresnelCoefficients",
     "MironovSoilMedium",
     "mironov_permittivity",
 ]

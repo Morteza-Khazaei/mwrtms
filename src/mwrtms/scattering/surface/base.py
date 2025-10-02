@@ -12,9 +12,13 @@ __all__ = ["SurfaceScattering"]
 class SurfaceScattering(ScatteringMechanism):
     """Template method for surface scattering models."""
 
-    def __init__(self, wave, geometry, surface_roughness) -> None:
+    def __init__(self, wave, geometry, surface=None, *, surface_roughness=None) -> None:
         super().__init__(wave, geometry)
-        self._roughness = surface_roughness
+        if surface is None:
+            surface = surface_roughness
+        if surface is None:
+            raise ValueError("surface must be provided")
+        self._surface = surface
 
     def compute(self, medium_above, medium_below, polarization) -> float:
         R_h, R_v = self._compute_fresnel(medium_above, medium_below)
@@ -31,7 +35,7 @@ class SurfaceScattering(ScatteringMechanism):
         """Return the complementary (multiple) contribution."""
 
     def _compute_fresnel(self, medium_above, medium_below):
-        from ...interface import FresnelCoefficients
+        from ...medium.interface import FresnelCoefficients
 
         eps1 = medium_above.permittivity(self._wave.frequency_hz)
         eps2 = medium_below.permittivity(self._wave.frequency_hz)

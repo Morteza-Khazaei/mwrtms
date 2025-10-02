@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from mwrtms.core import ElectromagneticWave, PolarizationState, ScatteringGeometry
-from mwrtms.interface import ExponentialCorrelation, IsotropicRoughness
+from mwrtms.medium.surface import build_surface_from_statistics
 from mwrtms.medium import Medium
 from mwrtms.scattering.surface import SPMModel
 
@@ -57,14 +57,14 @@ def test_spm3d_matches_nmm3d_within_tolerance() -> None:
 
         sigma = rms_norm * lambda_m
         corr_length = ratio * sigma
-        roughness = IsotropicRoughness(
-            rms_height_m=sigma,
-            correlation_length_m=corr_length,
-            correlation_function=ExponentialCorrelation(),
+        surface = build_surface_from_statistics(
+            sigma,
+            corr_length,
+            correlation_type="exponential",
         )
 
         soil = _ConstantMedium(complex(eps_r, eps_i))
-        model = SPMModel(wave, geometry, roughness)
+        model = SPMModel(wave, geometry, surface)
 
         sigma_vv = model.compute(air, soil, PolarizationState.VV)
         sigma_hh = model.compute(air, soil, PolarizationState.HH)

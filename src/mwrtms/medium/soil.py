@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..dielectric import DobsonModel, MironovModel
+from .dielectric import DobsonModel, MironovModel
 from .base import Medium
 
 __all__ = ["SoilMedium"]
