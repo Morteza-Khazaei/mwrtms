@@ -1,52 +1,57 @@
-"""Foundation library for microwave radiative transfer models."""
+"""Microwave Radiative Transfer Models foundation package."""
 
 from .__version__ import __version__
 from .core.geometry import ScatteringGeometry
 from .core.wave import ElectromagneticWave
 from .core.polarization import PolarizationState
-from .facade import mwRTMsFacade
-from .factory import ScatteringModelFactory
+from .medium import (
+    Medium,
+    SoilMedium,
+    VegetationMedium,
+    MironovSoilMedium,
+    mironov_permittivity,
+)
 from .interface import (
-    CorrelationFunction,
     ExponentialCorrelation,
     GaussianCorrelation,
     PowerLawCorrelation,
-    SurfaceRoughness,
+    IsotropicRoughness,
+    AnisotropicRoughness,
 )
-from .medium import DielectricTensor, IsotropicMedium, MironovSoilMedium, mironov_permittivity
 from .scattering import (
+    ScatteringMechanism,
+    SurfaceScattering,
     AIEMModel,
-    Dubois95Model,
-    I2EMModel,
-    IEMModel,
-    PRISM1Model,
-    SMARTModel,
-    SPM3DModel,
+    SPMModel,
+    VolumeScattering,
     SSRTModel,
+    CanopyProperties,
 )
+from .factory import ScatteringModelFactory
+from .facade import mwRTMs
 
 __all__ = [
     "__version__",
     "ElectromagneticWave",
-    "PolarizationState",
     "ScatteringGeometry",
-    "SurfaceRoughness",
-    "CorrelationFunction",
-    "GaussianCorrelation",
-    "ExponentialCorrelation",
-    "PowerLawCorrelation",
-    "DielectricTensor",
-    "IsotropicMedium",
+    "PolarizationState",
+    "Medium",
+    "SoilMedium",
+    "VegetationMedium",
     "MironovSoilMedium",
     "mironov_permittivity",
+    "ExponentialCorrelation",
+    "GaussianCorrelation",
+    "PowerLawCorrelation",
+    "IsotropicRoughness",
+    "AnisotropicRoughness",
+    "ScatteringMechanism",
+    "SurfaceScattering",
     "AIEMModel",
-    "I2EMModel",
-    "IEMModel",
-    "PRISM1Model",
-    "SPM3DModel",
-    "SMARTModel",
-    "Dubois95Model",
+    "SPMModel",
+    "VolumeScattering",
     "SSRTModel",
+    "CanopyProperties",
     "ScatteringModelFactory",
-    "mwRTMsFacade",
+    "mwRTMs",
 ]

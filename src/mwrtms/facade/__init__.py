@@ -1,5 +1,5 @@
-"""Facade exports."""
+"""Facade providing simplified APIs."""
 
-from .api import mwRTMsFacade
+from .api import mwRTMs
 
-__all__ = ["mwRTMsFacade"]
+__all__ = ["mwRTMs"]

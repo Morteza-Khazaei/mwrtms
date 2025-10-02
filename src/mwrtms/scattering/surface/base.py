@@ -1,66 +1,42 @@
-"""Surface scattering base classes demonstrating inheritance."""
+"""Base class for surface scattering models."""
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
-import numpy as np
-
-from ...core.polarization import PolarizationState
-from ...interface.fresnel import FresnelCoefficients
-from ...interface.roughness import SurfaceRoughness
-from ...medium.base import Medium
 from ..base import ScatteringMechanism
 
 __all__ = ["SurfaceScattering"]
 
 
-class SurfaceScattering(ScatteringMechanism, ABC):
-    """Template for surface scattering models."""
+class SurfaceScattering(ScatteringMechanism):
+    """Template method for surface scattering models."""
 
-    __slots__ = ("_roughness",)
-    _mutable_slots: set[str] = set()
-
-    def __setattr__(self, name, value):
-        if name in self.__slots__ and hasattr(self, name) and name not in self._mutable_slots:
-            raise AttributeError(f"{self.__class__.__name__} attribute {name!r} is read-only")
-        super().__setattr__(name, value)
-
-    def __init__(self, wave, geometry, surface_roughness: SurfaceRoughness) -> None:
+    def __init__(self, wave, geometry, surface_roughness) -> None:
         super().__init__(wave, geometry)
         self._roughness = surface_roughness
 
-    @property
-    def roughness(self) -> SurfaceRoughness:
-        return self._roughness
-
-    def _compute_scattering(self, medium_above: Medium, medium_below: Medium, polarization: PolarizationState) -> float:
-        fresnel = self._compute_fresnel(medium_above, medium_below)
-        kirchhoff = self._compute_kirchhoff(fresnel, polarization)
-        complementary = self._compute_complementary(fresnel, polarization)
+    def compute(self, medium_above, medium_below, polarization) -> float:
+        R_h, R_v = self._compute_fresnel(medium_above, medium_below)
+        kirchhoff = self._compute_kirchhoff(R_h, R_v, polarization)
+        complementary = self._compute_complementary(R_h, R_v, polarization)
         return kirchhoff + complementary
 
-    def _compute_fresnel(self, medium_above: Medium, medium_below: Medium) -> dict[str, complex]:
-        eps1 = medium_above.permittivity(self.wave.frequency_hz)
-        eps2 = medium_below.permittivity(self.wave.frequency_hz)
-        theta = self.geometry.theta_i
-        return {
-            "h": FresnelCoefficients.reflection(eps1, eps2, theta, "h"),
-            "v": FresnelCoefficients.reflection(eps1, eps2, theta, "v"),
-        }
+    @abstractmethod
+    def _compute_kirchhoff(self, R_h, R_v, polarization):
+        """Return the Kirchhoff contribution."""
 
     @abstractmethod
-    def _compute_kirchhoff(self, fresnel: dict[str, complex], polarization: PolarizationState) -> float:
-        """Kirchhoff component implemented by subclasses."""
+    def _compute_complementary(self, R_h, R_v, polarization):
+        """Return the complementary (multiple) contribution."""
 
-    @abstractmethod
-    def _compute_complementary(self, fresnel: dict[str, complex], polarization: PolarizationState) -> float:
-        """Complementary component implemented by subclasses."""
+    def _compute_fresnel(self, medium_above, medium_below):
+        from ...interface import FresnelCoefficients
 
-    def _surface_spectrum(self, order: int, delta_kx: float, delta_ky: float) -> float:
-        return self._roughness.spectrum(order, delta_kx, delta_ky)
+        eps1 = medium_above.permittivity(self._wave.frequency_hz)
+        eps2 = medium_below.permittivity(self._wave.frequency_hz)
+        theta = self._geometry.theta_i_rad
 
-    def _prefactor(self) -> float:
-        k = self.wave.wavenumber
-        theta = self.geometry.theta_i
-        return (k**2 * np.cos(theta) ** 4) / (2.0 * np.pi)
+        R_h = FresnelCoefficients.reflection(eps1, eps2, theta, "h")
+        R_v = FresnelCoefficients.reflection(eps1, eps2, theta, "v")
+        return R_h, R_v

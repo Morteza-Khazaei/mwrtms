@@ -1,6 +1,5 @@
-"""Result containers."""
+"""Result containers for active backscatter workflows."""
 
-from .brightness import BrightnessTemperatureResult
 from .scattering import ScatteringResult
 
-__all__ = ["BrightnessTemperatureResult", "ScatteringResult"]
+__all__ = ["ScatteringResult"]

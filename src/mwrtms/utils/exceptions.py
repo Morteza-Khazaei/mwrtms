@@ -1,4 +1,4 @@
-"""Custom exceptions for mwRTMs."""
+"""Custom exception types for mwRTMs."""
 
 from __future__ import annotations
 
@@ -6,6 +6,6 @@ __all__ = ["MwrtmsError"]
 
 
 class MwrtmsError(Exception):
-    """Base exception for mwRTMs."""
+    """Base exception raised by mwRTMs."""
 
     pass

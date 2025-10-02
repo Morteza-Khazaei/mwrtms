@@ -1,34 +1,47 @@
-"""Base medium abstraction."""
+"""Abstract base class for electromagnetic media."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-import numpy as np
-
 __all__ = ["Medium"]
 
 
 class Medium(ABC):
-    """Abstract electromagnetic medium."""
+    """Abstract base class representing a homogeneous medium.
 
+    The class showcases *abstraction* by declaring the interface shared by all
+    media and *encapsulation* by keeping the temperature and dielectric cache
+    private. Concrete subclasses (soil, vegetation, ocean, snow, …) provide the
+    specific permittivity behaviour.
+    """
+
+    __slots__ = ("_temperature_k", "_dielectric_cache")
+
+    def __init__(self, temperature_k: float = 293.15) -> None:
+        if temperature_k <= 0.0:
+            raise ValueError("temperature_k must be positive")
+        self._temperature_k = float(temperature_k)
+        self._dielectric_cache: dict[float, complex] = {}
+
+    # ------------------------------------------------------------------
+    # Abstract interface
+    # ------------------------------------------------------------------
     @abstractmethod
-    def permittivity(self, frequency_hz: float, temperature_k: float | None = None) -> complex:
-        raise NotImplementedError
+    def permittivity(self, frequency_hz: float) -> complex:
+        """Return the complex relative permittivity ε_r(f)."""
 
-    @abstractmethod
-    def permeability(self, frequency_hz: float) -> complex:
-        raise NotImplementedError
+    # ------------------------------------------------------------------
+    # Encapsulated accessors
+    # ------------------------------------------------------------------
+    @property
+    def temperature_k(self) -> float:
+        """Physical temperature of the medium in Kelvin (read-only)."""
 
-    @abstractmethod
-    def physical_temperature(self) -> float:
-        raise NotImplementedError
+        return self._temperature_k
 
-    def impedance(self, frequency_hz: float) -> complex:
-        eps = self.permittivity(frequency_hz)
-        mu = self.permeability(frequency_hz)
-        return np.sqrt(mu / eps)
+    @property
+    def permeability(self) -> complex:
+        """Relative magnetic permeability μ_r (unity for natural media)."""
 
-    def loss_tangent(self, frequency_hz: float, temperature_k: float | None = None) -> float:
-        eps = self.permittivity(frequency_hz, temperature_k)
-        return abs(eps.imag / eps.real)
+        return 1.0 + 0.0j

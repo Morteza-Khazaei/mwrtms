@@ -7,9 +7,9 @@ from pathlib import Path
 import numpy as np
 
 from mwrtms.core import ElectromagneticWave, PolarizationState, ScatteringGeometry
-from mwrtms.interface import ExponentialCorrelation, SurfaceRoughness
-from mwrtms.medium import IsotropicMedium
-from mwrtms.scattering.surface import SPM3DModel
+from mwrtms.interface import ExponentialCorrelation, IsotropicRoughness
+from mwrtms.medium import Medium
+from mwrtms.scattering.surface import SPMModel
 
 _DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "NMM3D_LUT_NRCS_40degree.dat"
 _FREQUENCY_GHZ = 5.405
@@ -27,7 +27,18 @@ def test_spm3d_matches_nmm3d_within_tolerance() -> None:
 
     wave = ElectromagneticWave(_FREQUENCY_GHZ * 1e9)
     geometry = ScatteringGeometry(theta_i_deg=_INCIDENT_ANGLE_DEG)
-    air = IsotropicMedium(1.0 + 0.0j, _TEMPERATURE_K)
+
+    class _ConstantMedium(Medium):
+        __slots__ = ("_eps",)
+
+        def __init__(self, permittivity: complex) -> None:
+            super().__init__(_TEMPERATURE_K)
+            self._eps = permittivity
+
+        def permittivity(self, frequency_hz: float) -> complex:
+            return self._eps
+
+    air = _ConstantMedium(1.0 + 0.0j)
 
     lambda_m = wave.wavelength
 
@@ -46,14 +57,14 @@ def test_spm3d_matches_nmm3d_within_tolerance() -> None:
 
         sigma = rms_norm * lambda_m
         corr_length = ratio * sigma
-        roughness = SurfaceRoughness(
-            rms_height=sigma,
-            correlation_length=corr_length,
-            correlation_function=ExponentialCorrelation(corr_length),
+        roughness = IsotropicRoughness(
+            rms_height_m=sigma,
+            correlation_length_m=corr_length,
+            correlation_function=ExponentialCorrelation(),
         )
 
-        soil = IsotropicMedium(complex(eps_r, eps_i), _TEMPERATURE_K)
-        model = SPM3DModel(wave, geometry, roughness)
+        soil = _ConstantMedium(complex(eps_r, eps_i))
+        model = SPMModel(wave, geometry, roughness)
 
         sigma_vv = model.compute(air, soil, PolarizationState.VV)
         sigma_hh = model.compute(air, soil, PolarizationState.HH)

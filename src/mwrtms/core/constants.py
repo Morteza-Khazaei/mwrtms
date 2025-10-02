@@ -1,28 +1,19 @@
-"""Physical constants used throughout the mwRTMs package."""
+"""Physical constants used throughout the mwRTMs foundation layer."""
 
 from __future__ import annotations
 
 import math
 
-__all__ = [
-    "SPEED_OF_LIGHT", "BOLTZMANN", "VACUUM_PERMITTIVITY",
-    "VACUUM_PERMEABILITY", "PLANCK", "FERMI_TEMP"
-]
+__all__ = ["SPEED_OF_LIGHT", "EPSILON_0", "MU_0", "PLANCK_CONSTANT"]
 
-SPEED_OF_LIGHT: float = 299_792_458.0
+SPEED_OF_LIGHT: float = 2.998e8
 """Speed of light in vacuum (m/s)."""
 
-BOLTZMANN: float = 1.380_649e-23
-"""Boltzmann constant (J/K)."""
+EPSILON_0: float = 8.8541878128e-12
+"""Vacuum permittivity ε₀ (F/m)."""
 
-VACUUM_PERMITTIVITY: float = 8.854_187_8128e-12
-"""Permittivity of free space (F/m)."""
+MU_0: float = 4.0 * math.pi * 1e-7
+"""Vacuum permeability μ₀ (H/m)."""
 
-VACUUM_PERMEABILITY: float = 4 * math.pi * 1e-7
-"""Permeability of free space (H/m)."""
-
-PLANCK: float = 6.626_070_15e-34
-"""Planck constant (J·s)."""
-
-FERMI_TEMP: float = 2.725
-"""Cosmic microwave background temperature (K)."""
+PLANCK_CONSTANT: float = 6.62607015e-34
+"""Planck constant h (J·s)."""

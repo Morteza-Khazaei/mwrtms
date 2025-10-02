@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-__all__ = ["ghz_to_hz", "hz_to_ghz", "kelvin_to_celsius", "celsius_to_kelvin"]
+import numpy as np
+
+__all__ = ["cm_to_m", "ghz_to_hz", "linear_to_db"]
 
 
-def ghz_to_hz(value: float) -> float:
-    return value * 1e9
+def cm_to_m(value_cm: float) -> float:
+    return value_cm / 100.0
 
 
-def hz_to_ghz(value: float) -> float:
-    return value / 1e9
+def ghz_to_hz(value_ghz: float) -> float:
+    return value_ghz * 1e9
 
 
-def kelvin_to_celsius(value: float) -> float:
-    return value - 273.15
-
-
-def celsius_to_kelvin(value: float) -> float:
-    return value + 273.15
+def linear_to_db(value_linear: float) -> float:
+    return 10.0 * np.log10(value_linear + 1e-30)

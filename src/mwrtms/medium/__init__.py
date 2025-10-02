@@ -1,17 +1,53 @@
-"""Medium abstractions."""
+"""Medium hierarchy exports."""
 
 from .base import Medium
-from .dielectric import DielectricTensor
-from .isotropic import IsotropicMedium
-from .mironov import MironovSoilMedium, mironov_permittivity
-from .layered import Layer, LayeredMedium
+from .soil import SoilMedium
+from .vegetation import VegetationMedium
+from ..dielectric import MironovModel
 
 __all__ = [
     "Medium",
-    "DielectricTensor",
-    "IsotropicMedium",
+    "SoilMedium",
+    "VegetationMedium",
     "MironovSoilMedium",
     "mironov_permittivity",
-    "Layer",
-    "LayeredMedium",
 ]
+
+
+class MironovSoilMedium(SoilMedium):
+    """Convenience wrapper that locks SoilMedium to the Mironov dielectric model."""
+
+    def __init__(
+        self,
+        moisture_m3m3: float,
+        clay_fraction: float,
+        sand_fraction: float,
+        temperature_k: float = 293.15,
+    ) -> None:
+        super().__init__(
+            moisture_m3m3=moisture_m3m3,
+            clay_fraction=clay_fraction,
+            sand_fraction=sand_fraction,
+            temperature_k=temperature_k,
+            dielectric_model="mironov",
+        )
+
+
+def mironov_permittivity(
+    frequency_hz: float,
+    *,
+    moisture: float,
+    clay: float,
+    sand: float,
+    temperature_k: float = 293.15,
+) -> complex:
+    """Return Mironov et al. (2009) soil permittivity for convenience."""
+
+    model = MironovModel()
+    return model.compute(
+        frequency_hz=frequency_hz,
+        moisture=moisture,
+        clay=clay,
+        sand=sand,
+        temperature_k=temperature_k,
+    )
