@@ -5,6 +5,14 @@ from .geometry import ScatteringGeometry
 from .polarization import PolarizationState
 from .wave import ElectromagneticWave
 
+from .radar_modes import (
+    ObservationMode,
+    RadarConfiguration,
+    MonostaticConfiguration,
+    BistaticConfiguration,
+    RadarConfigurationFactory,
+)
+
 __all__ = [
     "SPEED_OF_LIGHT",
     "EPSILON_0",
@@ -13,4 +21,9 @@ __all__ = [
     "ElectromagneticWave",
     "ScatteringGeometry",
     "PolarizationState",
+    "ObservationMode",
+    "RadarConfiguration",
+    "MonostaticConfiguration",
+    "BistaticConfiguration",
+    "RadarConfigurationFactory",
 ]

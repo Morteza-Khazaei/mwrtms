@@ -3,6 +3,7 @@ import numpy as np
 from mwrtms.core import ElectromagneticWave, ScatteringGeometry
 from mwrtms.medium import Medium
 from mwrtms.medium.surface import build_surface_from_statistics
+from mwrtms.core import RadarConfigurationFactory
 from mwrtms.scattering.surface import SPMModel
 from mwrtms.core.polarization import PolarizationState
 
@@ -39,3 +40,31 @@ def test_spm_cross_pol_returns_positive_power() -> None:
 
     assert sigma_hh > 0.0 and sigma_vv > 0.0
     assert sigma_hv < sigma_vv
+
+
+
+def test_compute_with_config_validates_geometry() -> None:
+    surface = build_surface_from_statistics(0.004, 0.02)
+    wave = ElectromagneticWave(frequency_hz=2.0e9)
+    air = _ConstantMedium(1.0 + 0.0j)
+    soil = _ConstantMedium(7.0 + 1.2j)
+
+    config_ref = RadarConfigurationFactory.create_monostatic(30.0)
+    config_other = RadarConfigurationFactory.create_monostatic(35.0)
+
+    model = ScatteringModelFactory.create_with_radar_config(
+        "spm",
+        config=config_ref,
+        wave=wave,
+        surface=surface,
+    )
+
+    # Matching configuration succeeds
+    sigma_vv = model.compute_with_config(air, soil, PolarizationState.VV, config_ref)
+    assert sigma_vv > 0.0
+
+    # Mismatched geometry raises
+    import pytest
+
+    with pytest.raises(ValueError):
+        model.compute_with_config(air, soil, PolarizationState.VV, config_other)

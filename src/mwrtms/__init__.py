@@ -4,6 +4,14 @@ from .__version__ import __version__
 from .core.geometry import ScatteringGeometry
 from .core.wave import ElectromagneticWave
 from .core.polarization import PolarizationState
+
+from .core.radar_modes import (
+    ObservationMode,
+    RadarConfiguration,
+    MonostaticConfiguration,
+    BistaticConfiguration,
+    RadarConfigurationFactory,
+)
 from .medium import (
     Medium,
     SoilMedium,
@@ -35,7 +43,7 @@ from .scattering import (
     CanopyProperties,
 )
 from .factory import ScatteringModelFactory
-from .facade import mwRTMs
+from .facade import mwRTMs, mwRTMsFacade
 
 __all__ = [
     "__version__",
@@ -48,6 +56,11 @@ __all__ = [
     "MironovSoilMedium",
     "mironov_permittivity",
     "FresnelCoefficients",
+    "ObservationMode",
+    "RadarConfiguration",
+    "MonostaticConfiguration",
+    "BistaticConfiguration",
+    "RadarConfigurationFactory",
     "CorrelationFunction",
     "Exponential",
     "Gaussian",
@@ -68,5 +81,6 @@ __all__ = [
     "CanopyProperties",
     "ScatteringModelFactory",
     "mwRTMs",
+    "mwRTMsFacade",
 ]
 

@@ -2,4 +2,6 @@
 
 from .api import mwRTMs
 
-__all__ = ["mwRTMs"]
+mwRTMsFacade = mwRTMs
+
+__all__ = ["mwRTMs", "mwRTMsFacade"]

@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 __all__ = ["ScatteringMechanism"]
+
+if TYPE_CHECKING:
+    from ..core import PolarizationState
+    from ..core.radar_modes import RadarConfiguration
+    from ..medium import Medium
 
 
 class ScatteringMechanism(ABC):
@@ -19,6 +25,21 @@ class ScatteringMechanism(ABC):
         """Return the backscatter coefficient σ⁰ (linear power)."""
 
         raise NotImplementedError
+
+    def compute_with_config(
+        self,
+        medium_above: "Medium",
+        medium_below: "Medium",
+        polarization: "PolarizationState",
+        config: "RadarConfiguration",
+    ) -> float:
+        """Compute scattering using an explicit radar configuration."""
+
+        if not config.matches_geometry(self._geometry):
+            raise ValueError(
+                "Radar configuration geometry does not match the scattering mechanism geometry"
+            )
+        return self.compute(medium_above, medium_below, polarization)
 
     @property
     def wave(self):
