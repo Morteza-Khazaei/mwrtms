@@ -2,24 +2,33 @@
 
 import numpy as np
 
-from mwrtms import mwRTMs
-from mwrtms.core import ElectromagneticWave, ScatteringGeometry, PolarizationState
+from mwrtms import mwRTMs, RadarConfigurationFactory, PolarizationState
+from mwrtms.core import ElectromagneticWave, ScatteringGeometry
 from mwrtms.medium import SoilMedium, VegetationMedium
 from mwrtms.scattering.volume import SSRTModel, CanopyProperties
 
 
 def main() -> None:
-    soil_result = mwRTMs.compute_soil_backscatter(
-        "aiem",
-        5.4,
-        40.0,
-        1.0,
-        5.0,
-        "exponential",
-        soil_moisture=0.25,
+    config = RadarConfigurationFactory.create_monostatic(theta_deg=40.0)
+    soil_medium = SoilMedium(
+        moisture_m3m3=0.25,
+        clay_fraction=0.3,
+        sand_fraction=0.5,
     )
+    perm = soil_medium.permittivity(frequency_hz=5.4e9)
 
-    soil_sigma0 = {pol: 10 ** (val / 10.0) for pol, val in soil_result.items()}
+    soil_sigma0 = {}
+    for pol in (PolarizationState.HH, PolarizationState.VV, PolarizationState.HV):
+        sigma = mwRTMs.compute_soil_backscatter(
+            model="aiem",
+            radar_config=config,
+            frequency_ghz=5.4,
+            rms_height_cm=1.0,
+            correlation_length_cm=5.0,
+            soil_permittivity=perm,
+            polarization=pol,
+        )
+        soil_sigma0[pol.value] = sigma
 
     wave = ElectromagneticWave(frequency_hz=5.4e9)
     geometry = ScatteringGeometry(theta_i_deg=40.0)

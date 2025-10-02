@@ -18,8 +18,9 @@ from mwrtms import (
     ScatteringGeometry,
     SurfaceScattering,
     build_surface_from_statistics,
+    RadarConfigurationFactory,
+    PolarizationState,
 )
-from mwrtms.core.polarization import PolarizationState
 from mwrtms.factory import ScatteringModelFactory
 from mwrtms.facade import mwRTMs
 from mwrtms.medium import Medium
@@ -67,13 +68,14 @@ def test_inheritance_polymorphism(simple_setup):
 
 
 def test_abstraction_facade(simple_setup):
-    sigma = mwRTMs.compute_soil_backscatter(
+    config = RadarConfigurationFactory.create_monostatic(40.0)
+    sigma_vv = mwRTMs.compute_soil_backscatter(
         model="aiem",
+        radar_config=config,
         frequency_ghz=5.4,
-        incident_angle_deg=40.0,
         rms_height_cm=1.0,
         correlation_length_cm=5.0,
-        soil_moisture=0.25,
+        soil_permittivity=12.0 + 2.0j,
+        polarization=PolarizationState.VV,
     )
-    assert isinstance(sigma, dict)
-    assert set(sigma.keys()) == {"hh", "vv", "hv"}
+    assert sigma_vv > 0.0

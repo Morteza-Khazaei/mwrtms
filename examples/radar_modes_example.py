@@ -15,7 +15,7 @@ from mwrtms.factory import ScatteringModelFactory
 from mwrtms.medium import Medium
 from mwrtms.medium.surface import build_surface_from_statistics
 from mwrtms.scattering.surface import SPMModel
-from mwrtms.facade import mwRTMs
+from mwrtms.facade import mwRTMsFacade
 
 
 class _ConstantMedium(Medium):
@@ -105,7 +105,7 @@ def manual_vs_factory() -> None:
 
 def facade_example() -> None:
     config = RadarConfigurationFactory.create_monostatic(theta_deg=40.0)
-    sigma_vv = mwRTMs.compute_soil_backscatter_with_mode(
+    sigma_vv = mwRTMsFacade.compute_soil_backscatter(
         model="spm",
         radar_config=config,
         frequency_ghz=5.4,
