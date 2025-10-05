@@ -23,45 +23,6 @@ from typing import Callable, Dict, Sequence, Tuple
 
 import numpy as np
 
-# Optional Numba acceleration for inner series summations
-try:
-    from numba import njit
-    USE_NUMBA = True
-except Exception:  # pragma: no cover - numba may be unavailable
-    USE_NUMBA = False
-
-
-if 'USE_NUMBA' in globals() and USE_NUMBA:
-    @njit(cache=True, fastmath=True)
-    def _series_sum_numba(
-        coeff_arr: np.ndarray,
-        arg_x_arr: np.ndarray,
-        arg_y_arr: np.ndarray,
-        sigma2: float,
-        kl: float,
-        Nmax: int,
-        corr_code: int,
-        twopi5: float,
-    ) -> np.ndarray:
-        res = np.zeros_like(coeff_arr, dtype=np.complex128)
-        term = np.ones_like(coeff_arr, dtype=np.complex128)
-        for n in range(1, Nmax + 1):
-            term = term * (coeff_arr / n)
-            if corr_code == 0:  # Gaussian
-                factor = (kl * kl) / n
-                exp_arg = - (kl * kl) / (4.0 * n) * (arg_x_arr * arg_x_arr + arg_y_arr * arg_y_arr)
-                Wn = twopi5 * sigma2 * (factor / (4.0 * np.pi)) * np.exp(exp_arg)
-            else:  # Exponential
-                r = np.sqrt(arg_x_arr * arg_x_arr + arg_y_arr * arg_y_arr)
-                denom = 1.0 + ((kl * r) / n) ** 2
-                Wn = twopi5 * sigma2 * (kl / n) ** 2 * denom ** (-1.5)
-            res = res + term * Wn
-        return res
-
-# Normalization constant centralized to the spectrum provider (see docs/NORMALIZATION_ANALYSIS.md)
-_TWOPI = 2.0 * np.pi
-_TWOPI5 = _TWOPI ** 10  # two independent series products yield (2π)^10 overall
-
 
 @dataclass(frozen=True)
 class GeometryParams:
@@ -266,8 +227,6 @@ class _MultipleScatteringIntegrator:
         qmin = 1e-6
         rad = (np.real(q1) > qmin) | (np.real(q2) > qmin)
         W2D = np.outer(wu, wv)
-        # Normalization centralized in spectrum provider; integration uses raw weights
-        W2D_norm = W2D
 
         results: Dict[str, float] = {pol: 0.0 for pol in self.pols}
         hv_value: float | None = None
@@ -287,9 +246,9 @@ class _MultipleScatteringIntegrator:
                 # Take absolute value of integrands to ensure positive result
                 Ikc = np.abs(np.real(integrand_kc)) * rad
                 Ic = np.abs(np.real(integrand_c)) * rad
-                val = (k**2 / (8.0 * np.pi)) * np.sum(Ikc * W2D_norm) + (
+                val = (k**2 / (8.0 * np.pi)) * np.sum(Ikc * W2D) + (
                     k**2 / (64.0 * np.pi)
-                ) * np.sum(Ic * W2D_norm)
+                ) * np.sum(Ic * W2D)
                 results[pol] = max(float(np.real(val)), 0.0)
 
             elif pol in {"hv", "vh"}:
@@ -297,9 +256,9 @@ class _MultipleScatteringIntegrator:
                 # Take absolute value of integrands to ensure positive result
                 Ikc = np.abs(np.real(integrand_kc)) * rad
                 Ic = np.abs(np.real(integrand_c)) * rad
-                val = (k**2 / (8.0 * np.pi)) * np.sum(Ikc * W2D_norm) + (
+                val = (k**2 / (8.0 * np.pi)) * np.sum(Ikc * W2D) + (
                     k**2 / (64.0 * np.pi)
-                ) * np.sum(Ic * W2D_norm)
+                ) * np.sum(Ic * W2D)
                 hv_value = max(float(np.real(val)), 0.0)
                 results["hv"] = hv_value
                 results["vh"] = hv_value
@@ -310,33 +269,24 @@ class _MultipleScatteringIntegrator:
 def _make_Wn_provider(surf: SurfaceParams) -> Callable[[np.ndarray, np.ndarray, int], np.ndarray]:
     """Create roughness spectrum provider for given surface type.
     
-    Note: The spectrum includes σ² normalization and centralized (2π)^10 via per-series (2π)^5.
+    Note: The spectrum includes σ² normalization factor as per Yang et al. (2017).
     """
     sigma2 = surf.sigma ** 2
     kl = surf.kl
-    gauss = (surf.type == "gaussian") or (surf.type == "gauss")
 
-    if gauss:
+    if surf.type == "gaussian" or surf.type == "gauss":
 
         def provider(u: np.ndarray, v: np.ndarray, n: int) -> np.ndarray:
-            n_ = max(n, 1)
-            factor = kl**2 / n_
-            exp_arg = -(kl**2 / (4.0 * n_)) * (u**2 + v**2)
-            return _TWOPI5 * sigma2 * (factor / (4.0 * np.pi)) * np.exp(exp_arg)
+            factor = kl**2 / max(n, 1)
+            exp_arg = -(kl**2 / (4.0 * max(n, 1))) * (u**2 + v**2)
+            return sigma2 * (factor / (4.0 * np.pi)) * np.exp(exp_arg)
 
     else:  # Exponential (default)
 
         def provider(u: np.ndarray, v: np.ndarray, n: int) -> np.ndarray:
-            n_ = max(n, 1)
-            r = np.sqrt(u**2 + v**2)
-            denom = 1.0 + ((kl * r) / n_) ** 2
-            return _TWOPI5 * sigma2 * (kl / n_) ** 2 * denom ** (-1.5)
-
-    # Attach attributes used by the Numba-accelerated path
-    provider._sigma2 = float(sigma2)
-    provider._kl = float(kl)
-    provider._corr_code = 0 if gauss else 1
-    provider._twopi5 = float(_TWOPI5)
+            denom = 1.0 + ((kl * np.sqrt(u**2 + v**2)) / max(n, 1)) ** 2
+            NORMALIZATION_FACTOR = (2.0 * np.pi)**10
+            return NORMALIZATION_FACTOR * sigma2 * (kl / max(n, 1)) ** 2 * denom ** (-1.5)
 
     return provider
 
@@ -848,10 +798,7 @@ def _series_sum(
     wn_provider: Callable[[np.ndarray, np.ndarray, int], np.ndarray],
     Nmax: int,
 ) -> np.ndarray:
-    """Compute series summation with roughness spectrum.
-    
-    Uses a Numba-accelerated inner loop when available; falls back to NumPy otherwise.
-    """
+    """Compute series summation with roughness spectrum."""
     coeff_arr = np.asarray(coeff, dtype=np.complex128)
     if np.isscalar(arg_x):
         arg_x_arr = np.full_like(coeff_arr, float(arg_x))
@@ -862,26 +809,10 @@ def _series_sum(
     else:
         arg_y_arr = np.asarray(arg_y, dtype=float)
 
-    # Fast path with Numba if available and provider exposes parameters
-    if 'USE_NUMBA' in globals() and USE_NUMBA and hasattr(wn_provider, "_sigma2"):
-        return _series_sum_numba(
-            coeff_arr,
-            arg_x_arr,
-            arg_y_arr,
-            float(wn_provider._sigma2),
-            float(wn_provider._kl),
-            int(Nmax),
-            int(wn_provider._corr_code),
-            float(_TWOPI5),
-        )
-
-    # Fallback pure NumPy path with iterative series (avoids factorial overflow)
     result = np.zeros_like(coeff_arr, dtype=np.complex128)
-    term = np.ones_like(coeff_arr, dtype=np.complex128)
     for n in range(1, Nmax + 1):
-        term = term * (coeff_arr / n)
         Wn = wn_provider(arg_x_arr, arg_y_arr, n)
-        result += term * Wn
+        result += (np.power(coeff_arr, n) / math.factorial(n)) * Wn
     return result
 
 
