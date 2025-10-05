@@ -1,8 +1,11 @@
 """Surface scattering models."""
 
 from .base import SurfaceScattering
-from .aiem import AIEMModel
-from ..iem.i2em import I2EMModel
 from .spm import SPMModel
 
-__all__ = ["SurfaceScattering", "AIEMModel", "SPMModel", "I2EMModel"]
+# Legacy imports for backward compatibility
+# AIEM and I2EM have been moved to scattering.iem
+from ..iem.aiem import AIEMModel
+from ..iem.i2em import I2EMModel
+
+__all__ = ["SurfaceScattering", "SPMModel", "AIEMModel", "I2EMModel"]

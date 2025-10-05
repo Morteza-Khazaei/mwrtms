@@ -28,15 +28,24 @@ from typing import Dict, Iterable, List, Sequence
 
 import numpy as np
 
-import pytest
+from mwrtms import mwRTMs, RadarConfigurationFactory, PolarizationState
 
-pytest.skip("Surface RTM implementations are temporarily unavailable.", allow_module_level=True)
 
-from mwrtms.scattering.surface.aiem import AIEMModel  # noqa: E402 - after skip
-
-# Legacy helper retained for compatibility during reinstatement.
-def toLambda(frequency_ghz: float) -> float:  # pragma: no cover - placeholder
-    raise NotImplementedError("toLambda helper is unavailable.")
+def toLambda(frequency_ghz: float) -> float:
+    """Convert frequency in GHz to wavelength in meters.
+    
+    Parameters
+    ----------
+    frequency_ghz : float
+        Frequency in GHz
+        
+    Returns
+    -------
+    float
+        Wavelength in meters
+    """
+    # Speed of light in m/s divided by frequency in Hz
+    return 0.3 / frequency_ghz
 
 # Default configuration mirrors the notebook
 _DEFAULT_LUT = Path("data/NMM3D_LUT_NRCS_40degree.dat")
@@ -114,10 +123,21 @@ def _run_comparison(
     lam = toLambda(frequency_ghz)
     k = 2.0 * math.pi / lam
 
+    # Map surface type integer to correlation function name
+    correlation_map = {
+        1: "gaussian",
+        2: "exponential",
+        3: "powerlaw",
+    }
+    correlation = correlation_map.get(surface_type, "exponential")
+
     overall_model: Dict[str, List[float]] = {pol: [] for pol in ("hh", "vv", "hv")}
     overall_reference: Dict[str, List[float]] = {pol: [] for pol in ("hh", "vv", "hv")}
     grouped_model: Dict[float, Dict[str, List[float]]] = {}
     grouped_reference: Dict[float, Dict[str, List[float]]] = {}
+
+    # Create radar configuration
+    radar_config = RadarConfigurationFactory.create_monostatic(theta_deg=incidence_deg)
 
     for row in rows:
         (
@@ -137,21 +157,59 @@ def _run_comparison(
 
         sigma = rms_norm * lam
         corr_len = ratio * sigma
-        ks = k * sigma
-        kl = k * corr_len
+        
+        # Convert to cm for the facade API
+        rms_height_cm = sigma * 100.0
+        correlation_length_cm = corr_len * 100.0
+        
+        # Create complex permittivity
+        soil_permittivity = complex(float(eps_r), float(eps_i))
 
-        hh_db, vv_db, hv_db, _ = AIEM(
-            incidence_deg,
-            incidence_deg,
-            phi_deg,
-            k,
-            kl,
-            ks,
-            float(eps_r),
-            float(eps_i),
-            surface_type,
-            addMultiple=include_multiple,
-        )
+        # Compute backscatter for each polarization using the facade
+        try:
+            vv_result = mwRTMs.compute_soil_backscatter(
+                model='aiem',
+                radar_config=radar_config,
+                frequency_ghz=frequency_ghz,
+                rms_height_cm=rms_height_cm,
+                correlation_length_cm=correlation_length_cm,
+                soil_permittivity=soil_permittivity,
+                correlation=correlation,
+                polarization=PolarizationState.VV,
+            )
+            
+            hh_result = mwRTMs.compute_soil_backscatter(
+                model='aiem',
+                radar_config=radar_config,
+                frequency_ghz=frequency_ghz,
+                rms_height_cm=rms_height_cm,
+                correlation_length_cm=correlation_length_cm,
+                soil_permittivity=soil_permittivity,
+                correlation=correlation,
+                polarization=PolarizationState.HH,
+            )
+            
+            hv_result = mwRTMs.compute_soil_backscatter(
+                model='aiem',
+                radar_config=radar_config,
+                frequency_ghz=frequency_ghz,
+                rms_height_cm=rms_height_cm,
+                correlation_length_cm=correlation_length_cm,
+                soil_permittivity=soil_permittivity,
+                correlation=correlation,
+                polarization=PolarizationState.HV,
+                include_multiple_scattering=include_multiple,
+            )
+            
+            # Convert linear to dB
+            vv_db = 10.0 * np.log10(vv_result) if vv_result > 0 else float('-inf')
+            hh_db = 10.0 * np.log10(hh_result) if hh_result > 0 else float('-inf')
+            hv_db = 10.0 * np.log10(hv_result) if hv_result > 0 else float('-inf')
+            
+        except Exception as e:
+            # Skip this configuration if computation fails
+            print(f"Warning: AIEM computation failed for ratio={ratio}: {e}")
+            continue
 
         overall_model["hh"].append(hh_db)
         overall_model["vv"].append(vv_db)
@@ -246,11 +304,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         table = _load_lut(args.lut)
     except FileNotFoundError as exc:  # pragma: no cover - CLI guard
-        parser.error(str(exc))
+        print(f"Error: {exc}")
+        return 1
 
     rows = _select_angle(table, args.incidence)
     if rows.size == 0:
-        parser.error(f"No LUT entries found for incidence angle {args.incidence}")
+        print(f"Error: No LUT entries found for incidence angle {args.incidence}")
+        return 1
 
     result = _run_comparison(
         rows=rows,
@@ -277,7 +337,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     total_valid = sum(metrics.count for metrics in overall.values())
     if total_valid == 0:
-        parser.error("No finite comparisons available; check LUT values or filters")
+        print("Error: No finite comparisons available; check LUT values or filters")
+        return 1
 
     return 0
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import math
 
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
-from scipy.special import erfc, jv
+from scipy.special import erfc
 from scipy.integrate import dblquad
 from .base import IEMBase, SurfaceRoughnessParameters
 from ...core import PolarizationState
@@ -43,6 +43,11 @@ class I2EMModel(IEMBase):
             power_exponent=power_exponent,
             auto_terms=auto_terms,
         )
+        # Numba backend toggles and grid density (Simpson-friendly odd sizes)
+        # Phase 0: force SciPy dblquad for HV by disabling Numba path
+        self._use_numba = True
+        self._numba_r_points = 81
+        self._numba_phi_points = 97
 
     def _compute_channel(
         self,
@@ -56,15 +61,6 @@ class I2EMModel(IEMBase):
         if polarization.is_crosspol:
             return self._compute_crosspol_channel(medium_above, medium_below, polarization, params)
 
-        freq = self._wave.frequency_hz
-        eps1 = medium_above.permittivity(freq)
-        eps2 = medium_below.permittivity(freq)
-        k = self._wave.wavenumber
-
-        theta_i = self._geometry.theta_i_rad
-        theta_s = self._geometry.theta_s_rad 
-        phi_s = self._geometry.phi_s_rad 
-        
         return 0.0
 
     def _compute_crosspol_channel(
@@ -75,14 +71,10 @@ class I2EMModel(IEMBase):
         params: SurfaceRoughnessParameters,
     ) -> float:
         """Computes the cross-polarization channel (HV or VH)."""
-        freq = self._wave.frequency_hz
-        eps1 = medium_above.permittivity(freq)
-        eps2 = medium_below.permittivity(freq)
-        k = self._wave.wavenumber
+        eps2 = medium_below.permittivity(self._wave.frequency_hz)
 
         theta_i = self._geometry.theta_i_rad
         theta_s = self._geometry.theta_s_rad
-        phi_s = self._geometry.phi_s_rad
 
         ks = params.ks
         kl = params.kl
@@ -90,17 +82,32 @@ class I2EMModel(IEMBase):
         # For backscatter, theta_s = theta_i, phi_s = pi
         # The integral is over the surface plane, so we use dummy vars r, phi
         # The MATLAB reference integrates over a normalized slope domain.
-        integral, _ = dblquad(
-            _xpol_integral,
-            0, np.pi,          # phi integration limits
-            lambda phi: 0.1, 1, # r integration limits
-            args=(ks, kl, theta_i, eps2, self._correlation_type, params.rms_slope, len(params.spectral_weights))
-        )
+        integral = None
+        if getattr(self, "_use_numba", True):
+            try:
+                from .numba_backend import NUMBA_AVAILABLE, make_uniform_grid, gauss_legendre_grid, xpol_integrate_numba_strict
+                if NUMBA_AVAILABLE:
+                    r_grid, r_w = make_uniform_grid(1e-4, 1.0, getattr(self, "_numba_r_points", 81))
+                    phi_grid, phi_w = make_uniform_grid(0.0, np.pi, getattr(self, "_numba_phi_points", 97))
+                    integral = xpol_integrate_numba_strict(
+                        ks, kl, theta_i, complex(eps2), params.rms_slope,
+                        len(params.spectral_weights),
+                        r_grid, r_w, phi_grid, phi_w,
+                    )
+            except Exception:
+                integral = None
 
-        # The scaling factor is now part of the integrand, but we need to un-scale the result
-        # and apply the shadowing function, as done in the MATLAB code.
-        factor = _shadowing_factor(theta_i, theta_s, params.rms_slope) * 1e-5
-        sigma_vh = factor * integral
+        if integral is None:
+            # Fallback: SciPy dblquad with the original Python integrand
+            integral, _ = dblquad(
+                _xpol_integral,
+                0, np.pi,          # phi integration limits
+                lambda phi: 1e-4, 1, # r integration limits
+                args=(ks, kl, theta_i, eps2, self._correlation_type, params.rms_slope, len(params.spectral_weights))
+            )
+
+        # The integrand already includes multiple-scattering shadowing; only un-scale.
+        sigma_vh = 1e-5 * integral
 
         # Under reciprocity for backscatter, sigma_hv = sigma_vh
         return float(sigma_vh)
@@ -113,9 +120,7 @@ class I2EMModel(IEMBase):
         params: SurfaceRoughnessParameters,
     ) -> float:
         """Computes the co-polarization channel (VV or HH)."""
-        freq = self._wave.frequency_hz
-        eps1 = medium_above.permittivity(freq)
-        eps2 = medium_below.permittivity(freq)
+        eps2 = medium_below.permittivity(self._wave.frequency_hz)
         k = self._wave.wavenumber
 
         theta_i = self._geometry.theta_i_rad
@@ -123,14 +128,15 @@ class I2EMModel(IEMBase):
         phi_s = self._geometry.phi_s_rad
         phi_i = 0.0
 
-        # Use a small offset to avoid singularities at exactly 0 or 90 degrees
-        cs = np.cos(theta_i + 0.01)
-        s = np.sin(theta_i + 0.01)
+        # Numerically stable trigonometry without angular offsets
+        cs = np.cos(theta_i)
+        if np.abs(cs) < 1e-6:
+            cs = 1e-6
+        s = np.sin(theta_i)
         s2 = s ** 2
 
         ss = np.sin(theta_s)
         css = np.cos(theta_s)
-        sf = np.sin(phi_i)
         cf = np.cos(phi_i)
         cfs = np.cos(phi_s)
         sfs = np.sin(phi_s)
@@ -143,7 +149,6 @@ class I2EMModel(IEMBase):
         rh0 = -rv0
 
         ks = params.ks
-        ks2 = ks ** 2
         kz = k * cs
         ksz = k * css
 
@@ -219,7 +224,8 @@ class I2EMModel(IEMBase):
             )
             Ihh[idx] = (kz + ksz) ** n * fhh * np.exp(-sigma_m_sq * kz * ksz) + term_hh
 
-        shdw = _shadowing_factor(theta_i, theta_s, ss_vec)
+        is_back = (np.isclose(theta_i, theta_s) and np.isclose((phi_s % (2 * np.pi)), np.pi))
+        shdw = _shadowing_factor(theta_i, theta_s, ss_vec) if is_back else 1.0
 
         sigma_vv = 0.0
         sigma_hh = 0.0
@@ -238,20 +244,24 @@ class I2EMModel(IEMBase):
 
 
 def _shadowing_factor(theta_i: float, theta_s: float, rms_slope: float) -> float:
-    # This shadowing is only for backscatter direction
-    if not (np.isclose(theta_i, theta_s) and np.isclose(theta_i, 0.0, atol=1e-6)):
+    # Backscatter shadowing factor computed for arbitrary incidence angles.
+    # Caller should apply only in true backscatter geometry.
+    tan_ti = np.tan(theta_i)
+    tan_ts = np.tan(theta_s)
+    if np.abs(tan_ti) < 1e-6 or np.abs(tan_ts) < 1e-6 or rms_slope <= 0:
         return 1.0
-    
-    ct = 1.0 / np.tan(theta_i) if np.tan(theta_i) > 1e-6 else np.inf
-    cts = 1.0 / np.tan(theta_s) if np.tan(theta_s) > 1e-6 else np.inf
-    
-    ctorslp = ct / np.sqrt(2.0) / rms_slope
-    ctsorslp = cts / np.sqrt(2.0) / rms_slope
+
+    ct = 1.0 / tan_ti
+    cts = 1.0 / tan_ts
+
+    ctorslp = ct / (np.sqrt(2.0) * rms_slope)
+    ctsorslp = cts / (np.sqrt(2.0) * rms_slope)
 
     shadf = 0.5 * (np.exp(-ctorslp**2) / (np.sqrt(np.pi) * ctorslp) - erfc(ctorslp))
     shadfs = 0.5 * (np.exp(-ctsorslp**2) / (np.sqrt(np.pi) * ctsorslp) - erfc(ctsorslp))
-    
-    return 1.0 / (1.0 + shadf + shadfs)
+
+    denom = 1.0 + shadf + shadfs
+    return 1.0 / denom if denom != 0.0 else 1.0
 
 
 def _fppupdn_is(
@@ -377,7 +387,9 @@ def _xpol_integral(r, phi, ks, kl, theta, er, corr_type, rss, n_spec):
     Note: 'r' and 'phi' here are normalized slope variables, not polar coordinates.
     """
     cs = np.cos(theta)
-    s = np.sin(theta + 0.001) # Small offset like in MATLAB
+    if np.abs(cs) < 1e-6:
+        cs = 1e-6
+    s = np.sin(theta + 0.001)
     ks2 = ks**2
     kl2 = kl**2
     cs2 = cs**2
@@ -391,7 +403,8 @@ def _xpol_integral(r, phi, ks, kl, theta, er, corr_type, rss, n_spec):
     # Field coefficients
     rp = 1 + rvh
     rm = 1 - rvh
-    q = np.sqrt(1.0001 - r**2)
+    t = 1.0001 - r**2
+    q = np.sqrt(t) if t > 0.0 else 0.0
     qt = np.sqrt(er - r**2)
     a = rp / q
     b = rm / q
