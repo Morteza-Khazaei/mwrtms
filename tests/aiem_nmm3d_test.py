@@ -208,7 +208,11 @@ def _run_comparison(
             
         except Exception as e:
             # Skip this configuration if computation fails
+            import traceback
             print(f"Warning: AIEM computation failed for ratio={ratio}: {e}")
+            if "src" in str(e):
+                print("Full traceback:")
+                traceback.print_exc()
             continue
 
         overall_model["hh"].append(hh_db)
