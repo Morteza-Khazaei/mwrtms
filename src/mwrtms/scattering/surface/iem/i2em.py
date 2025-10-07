@@ -10,8 +10,8 @@ import numpy as np
 from scipy.special import erfc
 from scipy.integrate import dblquad
 from .base import IEMBase, SurfaceRoughnessParameters
-from ...core import PolarizationState
-from ...medium import Medium
+from ....core import PolarizationState
+from ....medium import Medium
 
 __all__ = ["I2EMModel"]
 

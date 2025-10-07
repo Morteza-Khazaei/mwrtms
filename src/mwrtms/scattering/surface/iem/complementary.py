@@ -68,7 +68,8 @@ def _compute_slope_and_field_components(
     ksyv = sis * sfs + v
     
     # Slope components at scattered angle
-    if np.abs(np.real(css - qslp)) < 1e-10:
+    # CORRECTED: Use complex magnitude, not real part magnitude
+    if np.abs(css - qslp) < 1e-10:
         zx = 0.0 + 0.0j
         zy = 0.0 + 0.0j
     else:
@@ -76,7 +77,8 @@ def _compute_slope_and_field_components(
         zy = -ksyv / (css - qslp)
     
     # Slope components at incident angle
-    if np.abs(np.real(cs + qslp)) < 1e-10:
+    # CORRECTED: Use complex magnitude, not real part magnitude
+    if np.abs(cs + qslp) < 1e-10:
         zxp = 0.0 + 0.0j
         zyp = 0.0 + 0.0j
     else:

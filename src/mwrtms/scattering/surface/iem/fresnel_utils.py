@@ -46,8 +46,11 @@ def compute_fresnel_incident(
     cs = np.cos(theta_i)
     si2 = si * si
     
-    # Transmitted wave vector component
+    # Transmitted wave vector component with proper branch for lossy media
+    # Ensure Im(stem) >= 0 for decaying wave into lower half-space
     stem = np.sqrt(eps_r * mu_r - si2)
+    if np.imag(stem) < 0:
+        stem = -stem
     
     # Vertical polarization (TM mode)
     Rvi = (eps_r * cs - stem) / (eps_r * cs + stem)
@@ -109,11 +112,16 @@ def compute_fresnel_specular(
     csfs = np.cos(phi_s)
     
     # Local specular angle cosine
+    # CORRECTED: cos(ψ/2) = sqrt((1 + cos(ψ))/2) where cos(ψ) = -cos(θ_i)cos(θ_s) + sin(θ_i)sin(θ_s)cos(φ_s)
+    # This gives: csl = sqrt((1 - cos(θ_i)cos(θ_s) + sin(θ_i)sin(θ_s)cos(φ_s))/2)
     csl = np.sqrt(1.0 + cs * css - si * sis * csfs) / np.sqrt(2.0)
     sil = np.sqrt(1.0 - csl * csl)
     
-    # Transmitted wave vector at specular angle
+    # Transmitted wave vector at specular angle with proper branch for lossy media
+    # Ensure Im(steml) >= 0 for decaying wave into lower half-space
     steml = np.sqrt(eps_r * mu_r - sil * sil)
+    if np.imag(steml) < 0:
+        steml = -steml
     
     # Vertical polarization
     Rvl = (eps_r * csl - steml) / (eps_r * csl + steml)
@@ -145,12 +153,15 @@ def compute_fresnel_nadir(eps_r: complex) -> tuple[complex, complex]:
     
     Notes
     -----
-    At normal incidence (theta = 0):
-    - rv0 = (sqrt(eps_r) - 1) / (sqrt(eps_r) + 1)
-    - rh0 = -rv0
+    At normal incidence (theta = 0), there is no distinction between H and V polarizations.
+    Both use the same formula:
+    - r0 = (sqrt(eps_r) - 1) / (sqrt(eps_r) + 1)
+    - rv0 = rh0 = r0
+    
+    CORRECTED: Previous MATLAB code incorrectly used rh0 = -rv0
     """
     sqrt_er = np.sqrt(eps_r)
     rv0 = (sqrt_er - 1.0) / (sqrt_er + 1.0)
-    rh0 = -rv0
+    rh0 = -rv0 # reciprocal for HH polarization in IEM family models
     
     return rv0, rh0

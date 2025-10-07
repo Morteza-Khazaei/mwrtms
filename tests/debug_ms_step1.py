@@ -17,7 +17,7 @@ Results are categorized by:
 import numpy as np
 from pathlib import Path
 from mwrtms import mwRTMs, RadarConfigurationFactory, PolarizationState
-from mwrtms.scattering.iem.multiple_scattering import (
+from mwrtms.scattering.surface.iem.multiple_scattering import (
     _prepare_geometry_params,
     _build_quadrature,
     PhysicsParams,

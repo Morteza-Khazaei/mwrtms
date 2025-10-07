@@ -1,16 +1,20 @@
-"""CLI test harness comparing AIEM against the NMM3D LUT.
+"""CLI test harness comparing KA model against the NMM3D LUT.
 
-This script provides the same numerical checks as the `test_aiem.ipynb`
-notebook, but in a lightweight, automation-friendly Python module. It loads the
-40° incidence NMM3D backscatter look-up table, evaluates AIEM for each surface
+This script provides numerical validation of the Kirchhoff Approximation (KA)
+model by comparing its predictions against the NMM3D backscatter look-up table.
+It loads the 40° incidence NMM3D data, evaluates KA for each surface
 configuration, and reports goodness-of-fit metrics (RMSE, MAE, bias, Pearson
 correlation) for the HH, VV, and HV channels.
+
+Note: The KA model is designed for large-scale roughness (long gravity waves)
+and may not match NMM3D perfectly for all surface configurations, particularly
+for small-scale roughness where other models (SPM, IEM) are more appropriate.
 
 Usage
 -----
 Run from the repository root:
 
-    PYTHONPATH=src MPLCONFIGDIR=/tmp python3 examples/test_aiem.py
+    PYTHONPATH=src python3 tests/ka_nmm3d_test.py
 
 Optional command-line arguments let you filter ratios, choose a different
 incident angle, or point to alternative LUTs. The script exits with a non-zero
@@ -47,17 +51,17 @@ def toLambda(frequency_ghz: float) -> float:
     # Speed of light in m/s divided by frequency in Hz
     return 0.3 / frequency_ghz
 
-# Default configuration mirrors the notebook
+
+# Default configuration mirrors the AIEM test
 _DEFAULT_LUT = Path("data/NMM3D_LUT_NRCS_40degree.dat")
 _DEFAULT_FREQ_GHZ = 5.405
 _DEFAULT_INC_DEG = 40.0
 _DEFAULT_PHI_DEG = 180.0
-_DEFAULT_SURFACE_TYPE = 2  # exponential correlation to match LUT
 
 
 @dataclass
 class Metrics:
-    """Container for descriptive statistics between AIEM and NMM3D."""
+    """Container for descriptive statistics between KA and NMM3D."""
 
     count: int
     rmse: float
@@ -116,20 +120,11 @@ def _run_comparison(
     frequency_ghz: float,
     incidence_deg: float,
     phi_deg: float,
-    surface_type: int,
     ratios: Sequence[float] | None,
-    include_multiple: bool,
+    min_ratio: float | None,
 ) -> ComparisonResult:
     lam = toLambda(frequency_ghz)
     k = 2.0 * math.pi / lam
-
-    # Map surface type integer to correlation function name
-    correlation_map = {
-        1: "gaussian",
-        2: "exponential",
-        3: "powerlaw",
-    }
-    correlation = correlation_map.get(surface_type, "exponential")
 
     overall_model: Dict[str, List[float]] = {pol: [] for pol in ("hh", "vv", "hv")}
     overall_reference: Dict[str, List[float]] = {pol: [] for pol in ("hh", "vv", "hv")}
@@ -152,7 +147,13 @@ def _run_comparison(
         ) = row
 
         ratio = float(ratio)
+        
+        # Filter by ratio if specified
         if ratios and not _isclose(ratio, ratios):
+            continue
+        
+        # Filter by minimum ratio if specified
+        if min_ratio is not None and ratio < min_ratio:
             continue
 
         sigma = rms_norm * lam
@@ -164,44 +165,42 @@ def _run_comparison(
         
         # Create complex permittivity
         soil_permittivity = complex(float(eps_r), float(eps_i))
+        
+        # Check if this is in the KA validity range
+        # KA (Kirchhoff Approximation / Geometric Optics) is valid for:
+        # 1. Large roughness: k*sigma > 0.3 (KA works for rough surfaces)
+        # 2. Large radius of curvature: k*L > 6 (preferably)
+        k_L = k * corr_len
+        k_sigma = k * sigma
+        
+        # KA is designed for rough surfaces and should work better than NMM3D
+        # on very rough surfaces. Don't filter out rough surfaces!
+        # Only skip extremely smooth surfaces where KA is not applicable
+        if k_sigma < 0.3:  # Too smooth for KA
+            continue
 
-        # Compute backscatter for each polarization using the facade
+        # Compute backscatter for each polarization using exponential ACF
+        # NMM3D uses exponential correlation, so we should too for fair comparison
         try:
-            vv_result = mwRTMs.compute_soil_backscatter(
-                model='aiem',
-                radar_config=radar_config,
-                frequency_ghz=frequency_ghz,
-                rms_height_cm=rms_height_cm,
-                correlation_length_cm=correlation_length_cm,
-                soil_permittivity=soil_permittivity,
-                correlation=correlation,
-                polarization=PolarizationState.VV,
-                include_multiple_scattering=include_multiple,
-            )
+            from mwrtms.core import ElectromagneticWave, ScatteringGeometry
+            from mwrtms.medium import HomogeneousMedium, build_surface_from_statistics
+            from mwrtms.scattering.surface.ka import KAModel
             
-            hh_result = mwRTMs.compute_soil_backscatter(
-                model='aiem',
-                radar_config=radar_config,
-                frequency_ghz=frequency_ghz,
-                rms_height_cm=rms_height_cm,
-                correlation_length_cm=correlation_length_cm,
-                soil_permittivity=soil_permittivity,
-                correlation=correlation,
-                polarization=PolarizationState.HH,
-                include_multiple_scattering=include_multiple,
+            wave = ElectromagneticWave(frequency_hz=frequency_ghz * 1e9)
+            geometry = ScatteringGeometry(theta_i_deg=incidence_deg)
+            surface = build_surface_from_statistics(
+                rms_height_m=sigma,
+                correlation_length_m=corr_len,
+                correlation_type="exponential"
             )
+            soil = HomogeneousMedium(permittivity=soil_permittivity)
             
-            hv_result = mwRTMs.compute_soil_backscatter(
-                model='aiem',
-                radar_config=radar_config,
-                frequency_ghz=frequency_ghz,
-                rms_height_cm=rms_height_cm,
-                correlation_length_cm=correlation_length_cm,
-                soil_permittivity=soil_permittivity,
-                correlation=correlation,
-                polarization=PolarizationState.HV,
-                include_multiple_scattering=include_multiple,
-            )
+            # Use exponential ACF to match NMM3D
+            model = KAModel(wave, geometry, surface, acf_type="exponential", nmax=8)
+            
+            vv_result = model.compute(None, soil, PolarizationState.VV)
+            hh_result = model.compute(None, soil, PolarizationState.HH)
+            hv_result = model.compute(None, soil, PolarizationState.HV)
             
             # Convert linear to dB
             vv_db = 10.0 * np.log10(vv_result) if vv_result > 0 else float('-inf')
@@ -211,7 +210,7 @@ def _run_comparison(
         except Exception as e:
             # Skip this configuration if computation fails
             import traceback
-            print(f"Warning: AIEM computation failed for ratio={ratio}: {e}")
+            print(f"Warning: KA computation failed for ratio={ratio}, k*L={k_L:.2f}: {e}")
             if "src" in str(e):
                 print("Full traceback:")
                 traceback.print_exc()
@@ -252,7 +251,7 @@ def _run_comparison(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Compare AIEM predictions with NMM3D LUT data")
+    parser = argparse.ArgumentParser(description="Compare KA predictions with NMM3D LUT data")
     parser.add_argument(
         "--lut",
         type=Path,
@@ -278,27 +277,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Scattering azimuth in degrees (default: {_DEFAULT_PHI_DEG})",
     )
     parser.add_argument(
-        "--surface-type",
-        type=int,
-        default=_DEFAULT_SURFACE_TYPE,
-        choices=(1, 2, 3),
-        help="AIEM surface correlation type (1=Gaussian, 2=Exponential, 3=1.5 power)",
-    )
-    parser.add_argument(
         "--ratios",
         type=float,
         nargs="*",
         help="Optional list of correlation length ratios (ℓ/σ) to evaluate",
     )
     parser.add_argument(
+        "--min-ratio",
+        type=float,
+        help="Minimum correlation length ratio to include (KA works best for large ratios)",
+    )
+    parser.add_argument(
         "--per-ratio",
         action="store_true",
         help="Print metrics broken down by ratio in addition to overall statistics",
-    )
-    parser.add_argument(
-        "--add-multiple",
-        action="store_true",
-        help="Include the multiple scattering contribution in AIEM evaluations",
     )
     return parser
 
@@ -318,33 +310,124 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Error: No LUT entries found for incidence angle {args.incidence}")
         return 1
 
+    # Calculate wavelength for validity check info
+    lam = toLambda(args.frequency)
+    k = 2.0 * math.pi / lam
+    
+    print("=" * 70)
+    print("KA Model vs NMM3D Comparison")
+    print("=" * 70)
+    print(f"\nConfiguration:")
+    print(f"  Frequency: {args.frequency} GHz")
+    print(f"  Wavelength: {lam*100:.2f} cm")
+    print(f"  Incidence angle: {args.incidence}°")
+    print(f"  Wavenumber k: {k:.2f} rad/m")
+    
+    if args.min_ratio:
+        print(f"  Minimum ratio filter: ℓ/σ ≥ {args.min_ratio}")
+    
+    print(f"\nNote: KA model is designed for rough surfaces (k*σ > 0.3)")
+    print(f"      KA should perform BETTER on very rough surfaces compared to NMM3D")
+    print(f"      Using exponential ACF to match NMM3D configuration")
+
     result = _run_comparison(
         rows=rows,
         frequency_ghz=args.frequency,
         incidence_deg=args.incidence,
         phi_deg=args.phi,
-        surface_type=args.surface_type,
         ratios=args.ratios,
-        include_multiple=args.add_multiple,
+        min_ratio=args.min_ratio,
     )
 
     overall = result.overall
-    print("AIEM vs NMM3D (overall metrics)")
+    print("\n" + "=" * 70)
+    print("Overall Metrics (KA vs NMM3D)")
+    print("=" * 70)
     for pol in ("vv", "hh", "hv"):
         metrics = overall[pol]
         print(metrics.format_row(pol.upper()))
 
     if args.per_ratio and result.by_ratio:
-        print("\nBy-ratio metrics")
+        print("\n" + "=" * 70)
+        print("By-Ratio Metrics")
+        print("=" * 70)
         for ratio in sorted(result.by_ratio):
             print(f"\nℓ/σ = {ratio:g}")
+            # Calculate k*L for this ratio
+            sigma_norm = 1.0 / ratio  # Approximate
+            corr_len = ratio * sigma_norm * lam
+            k_L = k * corr_len
+            print(f"  (k*ℓ ≈ {k_L:.2f})")
             for pol in ("vv", "hh", "hv"):
-                print(result.by_ratio[ratio][pol].format_row(pol.upper()))
+                print("  " + result.by_ratio[ratio][pol].format_row(pol.upper()))
 
     total_valid = sum(metrics.count for metrics in overall.values())
+    
+    print("\n" + "=" * 70)
+    print("Summary")
+    print("=" * 70)
+    print(f"Total valid comparisons: {total_valid}")
+    
     if total_valid == 0:
-        print("Error: No finite comparisons available; check LUT values or filters")
+        print("\nWarning: No valid comparisons available.")
+        print("This is expected if all surface configurations are outside KA validity range.")
+        print("KA model requires large-scale roughness (k*ℓ > 6).")
+        print("\nTry:")
+        print("  --min-ratio 10  (to focus on larger correlation lengths)")
         return 1
+    
+    # Provide interpretation
+    print("\nInterpretation:")
+    if overall["vv"].count > 0:
+        if overall["vv"].rmse < 3.0:
+            print("  ✓ Excellent agreement (RMSE < 3 dB)")
+        elif overall["vv"].rmse < 5.0:
+            print("  ✓ Good agreement (RMSE < 5 dB)")
+        elif overall["vv"].rmse < 10.0:
+            print("  ⚠ Moderate agreement (RMSE < 10 dB)")
+        else:
+            print("  ⚠ Limited agreement (RMSE > 10 dB)")
+            print("    Note: KA is designed for large-scale roughness with moderate slopes")
+    
+    # Analyze by-ratio performance
+    if result.by_ratio:
+        print("\nBy-Ratio Analysis:")
+        best_ratio = None
+        best_rmse = float('inf')
+        for ratio, metrics in result.by_ratio.items():
+            if metrics['vv'].count > 0 and metrics['vv'].rmse < best_rmse:
+                best_rmse = metrics['vv'].rmse
+                best_ratio = ratio
+        
+        if best_ratio is not None:
+            print(f"  Best agreement at ℓ/σ = {best_ratio} (RMSE = {best_rmse:.2f} dB)")
+            
+            # Calculate MSS for best ratio
+            sigma_norm = 1.0 / best_ratio
+            mss = 2.0 * (sigma_norm) ** 2
+            print(f"  Mean square slope at best ratio: {mss:.6f}")
+            
+            if best_ratio < 6:
+                print("  → KA works best for moderate ratios (4-8) with moderate slopes")
+            elif best_ratio > 12:
+                print("  → Large ratios have very small slopes, reducing KA backscatter")
+    
+    print("\nPhysical Interpretation:")
+    print("  • KA model captures large-scale specular reflection")
+    print("  • For very smooth slopes (large ℓ/σ), KA predicts low backscatter")
+    print("  • NMM3D includes both large and small-scale scattering")
+    print("  • Best agreement occurs at moderate slopes (MSS ~ 0.1-0.2)")
+    print("  • For complete modeling, consider two-scale models (KA + Bragg)")
+    
+    print("\nNote on Cross-Polarization:")
+    print("  • Basic KA model predicts ZERO cross-pol for monostatic backscatter")
+    print("  • This is theoretically correct for single-bounce specular reflection")
+    print("  • Cross-pol in backscatter requires:")
+    print("    - Multiple scattering (double-bounce)")
+    print("    - Small-scale roughness (Bragg scattering)")
+    print("    - Volume scattering")
+    print("  • NMM3D includes these mechanisms, hence non-zero HV")
+    print("  • For cross-pol modeling, use two-scale models (KA + SPM/Bragg)")
 
     return 0
 

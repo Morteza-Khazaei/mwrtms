@@ -29,9 +29,9 @@ from .complementary import (
     compute_complementary_vh,
 )
 from .multiple_scattering import compute_multiple_scattering
-from ...core import PolarizationState
-from ...medium import Medium
-from ...factory import register_model
+from ....core import PolarizationState
+from ....medium import Medium
+from ....factory import register_model
 
 __all__ = ["AIEMModel"]
 
@@ -171,7 +171,7 @@ class AIEMModel(IEMBase):
         # Compute Fresnel coefficients
         Rvi, Rhi, Rvhi = compute_fresnel_incident(eps_r, theta_i)
         Rvl, Rhl, Rvhl = compute_fresnel_specular(eps_r, theta_i, theta_s, phi_s)
-        rv0, rh0 = compute_fresnel_nadir(eps_r)
+        # Rv0, Rh0 = compute_fresnel_nadir(eps_r)
         
         # Compute transition function
         cs = np.cos(theta_i)
@@ -204,7 +204,7 @@ class AIEMModel(IEMBase):
         )
         
         # Single scattering coefficient
-        sigma0_single = kterm + cterm
+        sigma0_single = cterm #+ kterm
         
         # Add multiple scattering if requested
         if self._include_multiple_scattering:

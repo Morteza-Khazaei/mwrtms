@@ -304,7 +304,7 @@ pip install pytest
 ### Verify Installation
 
 ```python
-from mwrtms.scattering.iem.aiem_numba_backend import (
+from mwrtms.scattering.surface.iem.aiem_numba_backend import (
     NUMBA_AVAILABLE,
     check_numba_performance
 )

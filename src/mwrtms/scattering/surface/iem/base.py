@@ -7,14 +7,14 @@ from typing import Iterable, Optional, Union
 
 import numpy as np
 
-from ..surface.base import SurfaceScattering
-from ...core import PolarizationState
-from ...core.geometry import ScatteringGeometry
-from ...core.polarization import normalize_polarization
-from ...core.radar_modes import RadarConfiguration
-from ...core.wave import ElectromagneticWave
-from ...medium import Medium
-from ...result.scattering import ScatteringResult
+from ..base import SurfaceScattering
+from ....core import PolarizationState
+from ....core.geometry import ScatteringGeometry
+from ....core.polarization import normalize_polarization
+from ....core.radar_modes import RadarConfiguration
+from ....core.wave import ElectromagneticWave
+from ....medium import Medium
+from ....result.scattering import ScatteringResult
 from .correlation import (
     auto_spectral_order,
     single_scale_spectrum_weights,

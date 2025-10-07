@@ -117,7 +117,7 @@ print("NUMBA INTEGRATION STATUS")
 print("=" * 80)
 
 # Check Numba status
-from mwrtms.scattering.iem import multiple_scattering
+from mwrtms.scattering.surface.iem import multiple_scattering
 
 if multiple_scattering.NUMBA_AVAILABLE:
     print("\n✅ Numba acceleration is ENABLED")
