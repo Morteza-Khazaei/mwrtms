@@ -183,6 +183,7 @@ def benchmark_full_multiple_scattering():
                 kl=kl,
                 k=k,
                 sigma=sigma,
+                corr_length=corr_length_m,
                 surface_label='exponential',
                 polarisations=['hv'],
                 n_points=n_points,

@@ -49,7 +49,7 @@ def compute_wn_exponential_numba(u: float, v: float, n: int, sigma2: float, kl: 
     kl : float
         Normalized correlation length (k*l)
     two_pi_power : float
-        (2π)^10 normalization factor
+        Normalization factor (default 2π for exponential correlation)
         
     Returns
     -------
@@ -124,7 +124,7 @@ def series_sum_exponential_numba(
     nmax : int
         Maximum order
     two_pi_power : float
-        (2π)^10 normalization
+        Normalization factor (default 2π for exponential correlation)
     factorials : np.ndarray
         Pre-computed factorials [1!, 2!, ..., nmax!]
         
@@ -226,6 +226,51 @@ def series_sum_gaussian_numba(
             pow_imag = new_imag
     
     return result_real, result_imag
+
+
+# ============================================================================
+# Vectorised Series Summation over Precomputed Stacks
+# ============================================================================
+
+@njit(parallel=True, fastmath=True)
+def series_sum_stack_numba(
+    coeff: np.ndarray,
+    stack: np.ndarray,
+    inv_factorials: np.ndarray,
+) -> np.ndarray:
+    """Compute series sums for each coefficient using a precomputed W-stack.
+
+    Parameters
+    ----------
+    coeff : np.ndarray
+        Complex coefficient array (...).
+    stack : np.ndarray
+        Real-valued roughness spectra stack (..., Nmax).
+    inv_factorials : np.ndarray
+        Array of 1 / n! for n=1..Nmax.
+
+    Returns
+    -------
+    np.ndarray
+        Complex series sum with the same leading shape as ``coeff``.
+    """
+    leading = coeff.size
+    n_terms = stack.shape[-1]
+    result = np.empty(leading, dtype=np.complex128)
+
+    coeff_flat = coeff.reshape(leading)
+    stack_flat = stack.reshape(leading, n_terms)
+
+    for idx in prange(leading):
+        coeff_val = coeff_flat[idx]
+        pow_val = coeff_val
+        acc = 0.0 + 0.0j
+        for n_idx in range(n_terms):
+            acc += pow_val * stack_flat[idx, n_idx] * inv_factorials[n_idx]
+            pow_val *= coeff_val
+        result[idx] = acc
+
+    return result.reshape(coeff.shape)
 
 
 # ============================================================================

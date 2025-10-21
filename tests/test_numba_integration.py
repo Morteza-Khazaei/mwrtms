@@ -72,6 +72,7 @@ try:
         kl=kl,
         k=k,
         sigma=sigma,
+        corr_length=l,
         surface_label='exponential',
         polarisations=['hh', 'vv', 'hv'],
         n_points=65,  # Smaller grid for faster testing

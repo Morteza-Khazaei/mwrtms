@@ -124,19 +124,19 @@ for case_idx, row in enumerate(test_cases):
     
     geom = _prepare_geometry_params(theta_i, theta_s, phi_i, phi_s, k)
     phys = PhysicsParams(k=k, er=soil_permittivity)
-    surf = SurfaceParams(type='exponential', ks=ks, kl=kl, sigma=sigma)
+    surf = SurfaceParams(type='exponential', ks=ks, kl=kl, sigma=sigma, corr_length_m=corr_len)
     
     # Test with different grid sizes
     for n_points in [33, 65]:
         print(f"\n  Grid Size: {n_points} × {n_points} points, nmax=6")
         print(f"  {'-' * 96}")
         
-        quad = _build_quadrature(surf, n_points=n_points, nmax=6)
+        quad = _build_quadrature(surf, k, n_points=n_points, nmax=6)
         
         # Integration domain
         U = quad.U
         V = quad.V
-        umax = 5.0 / max(surf.kl, 1e-6)
+        umax = 5.0 / max(surf.corr_length_m, 1e-6)
         print(f"  Integration domain: U,V ∈ [{-umax:.3f}, {+umax:.3f}]")
         print(f"  Grid spacing: ΔU = ΔV = {U[0,1]-U[0,0]:.4f}")
         

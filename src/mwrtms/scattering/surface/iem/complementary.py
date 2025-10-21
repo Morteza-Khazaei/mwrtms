@@ -13,6 +13,13 @@ __all__ = [
 ]
 
 
+# REMOVED: _signed_qfix() function
+# The MATLAB AIEM code uses qfix directly without sign manipulation.
+# The sign information is already encoded in the q and qslp parameters passed to the function.
+# Adding a separate direction parameter was causing double sign application, leading to
+# overestimation in co-pol channels.
+
+
 def compute_expal(q: complex, ks: float, cs: float, css: float) -> complex:
     """
     Compute exponential factor for complementary field coefficients.
@@ -106,17 +113,17 @@ def compute_complementary_vv(
 ) -> complex:
     """
     Compute complementary field coefficient for VV polarization.
-    
+
     Parameters
     ----------
     u, v : float
         Integration variables
     q : complex
-        Wave vector component
+        Wave vector component (sign encodes propagation direction)
     qslp : complex
-        Slope-dependent wave vector
+        Slope-dependent wave vector (sign encodes propagation direction)
     qfix : complex
-        Fixed wave vector component
+        Fixed wave vector component (always positive)
     Rv : complex
         Vertical polarization reflection coefficient
     eps_r : complex
@@ -129,16 +136,17 @@ def compute_complementary_vv(
         sin(phi_s), cos(phi_s)
     is_substrate : bool
         If True, compute substrate-side (Fbvv), else air-side (Favv)
-    
+
     Returns
     -------
     Fvv : complex
         Complementary field coefficient for VV polarization
-    
+
     Notes
     -----
     Implements favv() and fbvv() from AIEM.m
     """
+    
     zx, zy, zxp, zyp = _compute_slope_and_field_components(
         u, v, q, qslp, si, sis, cs, css, sfs, csfs
     )
@@ -167,19 +175,21 @@ def compute_complementary_vv(
           sis * (v * zx * zyp - u * zy * zyp))
     
     # Reflection coefficient factors
+    # MATLAB: av = rpv./qfix; bv = rmv./qfix;
+    # Use qfix directly - sign is already in q and qslp parameters
     rpv = 1.0 + Rv
     rmv = 1.0 - Rv
     av = rpv / qfix
     bv = rmv / qfix
-    
+
     if not is_substrate:
-        # Air-side: favv
+        # Air-side: favv (MATLAB line 471)
         Fvv = bv * (-rpv * c1 + rmv * c2 + rpv * c3) + av * (rmv * c4 + rpv * c5 + rmv * c6)
     else:
         # Substrate-side: fbvv
-        Fvv = (av * (rpv * c1 - rmv * c2 - rpv * c3 / eps_r) - 
+        Fvv = (av * (rpv * c1 - rmv * c2 - rpv * c3 / eps_r) -
                bv * (rmv * c4 * eps_r + rpv * c5 + rmv * c6))
-    
+
     return Fvv
 
 
@@ -201,9 +211,9 @@ def compute_complementary_hh(
 ) -> complex:
     """
     Compute complementary field coefficient for HH polarization.
-    
+
     Parameters are the same as compute_complementary_vv, but using Rh instead of Rv.
-    
+
     Notes
     -----
     Implements fahh() and fbhh() from AIEM.m
@@ -236,19 +246,20 @@ def compute_complementary_hh(
           sis * (v * zx * zyp - u * zy * zyp))
     
     # Reflection coefficient factors
+    # MATLAB: ah = rph./qfix; bh = rmh./qfix;
     rph = 1.0 + Rh
     rmh = 1.0 - Rh
     ah = rph / qfix
     bh = rmh / qfix
-    
+
     if not is_substrate:
-        # Air-side: fahh
+        # Air-side: fahh (MATLAB line 352)
         Fhh = -bh * (-rph * c1 + rmh * c2 + rph * c3) - ah * (rmh * c4 + rph * c5 + rmh * c6)
     else:
         # Substrate-side: fbhh
-        Fhh = (ah * (-rph * c1 * eps_r + rmh * c2 + rph * c3) + 
+        Fhh = (ah * (-rph * c1 * eps_r + rmh * c2 + rph * c3) +
                bh * (rmh * c4 + rph * c5 + rmh * c6 / eps_r))
-    
+
     return Fhh
 
 
@@ -270,7 +281,7 @@ def compute_complementary_hv(
 ) -> complex:
     """
     Compute complementary field coefficient for HV polarization.
-    
+
     Notes
     -----
     Implements fahv() and fbhv() from AIEM.m
@@ -300,19 +311,20 @@ def compute_complementary_hv(
     b6 = -csfs * (-u * zyp + q * zx * zyp) + sfs * (v * zyp - q * zy * zyp)
     
     # Reflection coefficient factors
+    # MATLAB: a = rp./qfix; b = rm./qfix;
     rp = 1.0 + Rhv
     rm = 1.0 - Rhv
     a = rp / qfix
     b = rm / qfix
-    
+
     if not is_substrate:
-        # Air-side: fahv
+        # Air-side: fahv (MATLAB line 393)
         Fhv = b * (rp * b1 - rm * b2 - rp * b3) + a * (rm * b4 + rp * b5 + rm * b6)
     else:
         # Substrate-side: fbhv
-        Fhv = (a * (-rp * b1 + rm * b2 + rp * b3 / eps_r) - 
+        Fhv = (a * (-rp * b1 + rm * b2 + rp * b3 / eps_r) -
                b * (rm * b4 * eps_r + rp * b5 + rm * b6))
-    
+
     return Fhv
 
 
@@ -334,7 +346,7 @@ def compute_complementary_vh(
 ) -> complex:
     """
     Compute complementary field coefficient for VH polarization.
-    
+
     Notes
     -----
     Implements favh() and fbvh() from AIEM.m
@@ -364,17 +376,18 @@ def compute_complementary_vh(
     b6 = -csfs * (-u * zyp + q * zx * zyp) + sfs * (v * zyp - q * zy * zyp)
     
     # Reflection coefficient factors
+    # MATLAB: a = rp./qfix; b = rm./qfix;
     rp = 1.0 + Rhv
     rm = 1.0 - Rhv
     a = rp / qfix
     b = rm / qfix
-    
+
     if not is_substrate:
         # Air-side: favh
         Fvh = b * (rp * b4 + rm * b5 + rp * b6) - a * (-rm * b1 + rp * b2 + rm * b3)
     else:
         # Substrate-side: fbvh
-        Fvh = (-a * (rp * b4 + rm * b5 + rp * b6 / eps_r) + 
+        Fvh = (-a * (rp * b4 + rm * b5 + rp * b6 / eps_r) +
                b * (-rm * b1 * eps_r + rp * b2 + rm * b3))
-    
+
     return Fvh

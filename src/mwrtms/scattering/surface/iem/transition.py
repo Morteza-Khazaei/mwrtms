@@ -74,24 +74,24 @@ def compute_transition_function(
     # Nadir reflection coefficients
     sqrt_er = np.sqrt(eps_r)
     rv0 = (sqrt_er - 1.0) / (sqrt_er + 1.0)
-    rh0 = -rv0  # symmetric relation
+    rh0 = rv0  # symmetric relation
     
     # Transmitted wave vector component
     sqrt_term = np.sqrt(eps_r - siti2)
     
     # Transition factors
     Ftv = 8.0 * rv0**2 * siti2 * (cs + sqrt_term) / (cs * sqrt_term)
-    Fth = 8.0 * rh0**2 * siti2 * (cs + sqrt_term) / (cs * sqrt_term)
+    Fth = -8.0 * rh0**2 * siti2 * (cs + sqrt_term) / (cs * sqrt_term)
     
     # Shadowing terms at nadir
-    st0v = 1.0 / np.abs(1.0 + (8.0 * rv0) / (cs * Ftv))**2
-    st0h = 1.0 / np.abs(1.0 + (8.0 * rh0) / (cs * Fth))**2
+    st0v = 1.0 / np.abs(1.0 + 8.0 * rv0 / (cs * Ftv))**2
+    st0h = 1.0 / np.abs(1.0 + 8.0 * rh0 / (cs * Fth))**2
     
     # Compute series sums
-    sum1 = 0.0
-    sum2 = 0.0
-    sum3 = 0.0
-    temp1 = 1.0  # to handle n=0 case
+    sum_vn = 0.0
+    sum_hn = 0.0
+    sum_vd = 0.0
+    sum_hd = 0.0
     
     # Calculate the transition reflection coefficients
     # using the series expansion
@@ -99,16 +99,20 @@ def compute_transition_function(
     
     for n in range(n_terms):
         fn = n + 1
-        temp1 = temp1 * (1.0 / fn)
+        temp = kscs**(2.0 * fn) / math.factorial(fn)
         weight = spectral_weights[n] if n < len(spectral_weights) else 0.0
+
+        term_v = np.abs(Ftv + 2.0**(fn + 2.0) * (rv0 / cs) * np.exp(-kscs**2))**2
+        term_h = np.abs(Fth + 2.0**(fn + 2.0) * (rh0 / cs) * np.exp(-kscs**2))**2
         
-        sum1 += temp1 * kscs**(2.0 * fn) * weight
-        sum2 += temp1 * kscs**(2.0 * fn) * np.abs((Ftv + 2.0)**(fn + 2.0) * (rv0 / cs) * np.exp(-kscs**2))**2 * weight
-        sum3 += temp1 * kscs**(2.0 * fn) * np.abs((Fth + 2.0)**(fn + 2.0) * (rh0 / cs) * np.exp(-kscs**2))**2 * weight
+        sum_vn += temp * weight * np.abs(Ftv)**2
+        sum_hn += temp * weight * np.abs(Fth)**2
+        sum_vd += temp * weight * term_v
+        sum_hd += temp * weight * term_h
     
     # Calculate the shadowing terms
-    stv = np.abs(Ftv)**2 * (sum1 / sum2) if np.abs(sum2) > 1e-12 else 0.0
-    sth = np.abs(Fth)**2 * (sum1 / sum3) if np.abs(sum3) > 1e-12 else 0.0
+    stv = 0.25 * (sum_vn / sum_vd) if np.abs(sum_vd) > 1e-12 else 0.0
+    sth = 0.25 * (sum_hn / sum_hd) if np.abs(sum_hd) > 1e-12 else 0.0
     
     # Calculate transition functions
     tfv = 1.0 - (stv / st0v) if np.abs(st0v) > 1e-12 else 0.0
@@ -117,5 +121,6 @@ def compute_transition_function(
     # Avoid negative values (ensure non-negative)
     tfv = max(0.0, float(np.real(tfv)))
     tfh = max(0.0, float(np.real(tfh)))
+    # print(f"TFV: {tfv}, TFH: {tfh}")
     
     return tfv, tfh

@@ -1,0 +1,26 @@
+AIEM vs NMM3D (overall metrics)
+VV     n=162  RMSE= 1.28 dB  MAE= 1.03 dB  Bias=+0.18 dB  Corr= 0.977
+HH     n=162  RMSE= 1.95 dB  MAE= 1.66 dB  Bias=+1.46 dB  Corr= 0.972
+HV     n=138  RMSE=136.78 dB  MAE=136.60 dB  Bias=-136.60 dB  Corr= 0.842
+
+By-ratio metrics
+
+ℓ/σ = 4
+VV     n= 36  RMSE= 1.20 dB  MAE= 0.95 dB  Bias=+0.61 dB  Corr= 0.980
+HH     n= 36  RMSE= 2.10 dB  MAE= 1.91 dB  Bias=+1.78 dB  Corr= 0.988
+HV     n= 30  RMSE=126.91 dB  MAE=126.88 dB  Bias=-126.88 dB  Corr= 0.965
+
+ℓ/σ = 7
+VV     n= 42  RMSE= 1.18 dB  MAE= 0.89 dB  Bias=+0.27 dB  Corr= 0.985
+HH     n= 42  RMSE= 1.92 dB  MAE= 1.60 dB  Bias=+1.48 dB  Corr= 0.974
+HV     n= 36  RMSE=134.49 dB  MAE=134.45 dB  Bias=-134.45 dB  Corr= 0.960
+
+ℓ/σ = 10
+VV     n= 42  RMSE= 1.27 dB  MAE= 1.04 dB  Bias=+0.09 dB  Corr= 0.987
+HH     n= 42  RMSE= 1.91 dB  MAE= 1.60 dB  Bias=+1.39 dB  Corr= 0.967
+HV     n= 36  RMSE=139.21 dB  MAE=139.17 dB  Bias=-139.17 dB  Corr= 0.960
+
+ℓ/σ = 15
+VV     n= 42  RMSE= 1.45 dB  MAE= 1.24 dB  Bias=-0.18 dB  Corr= 0.989
+HH     n= 42  RMSE= 1.89 dB  MAE= 1.56 dB  Bias=+1.21 dB  Corr= 0.957
+HV     n= 36  RMSE=144.33 dB  MAE=144.30 dB  Bias=-144.30 dB  Corr= 0.962

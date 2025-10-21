@@ -61,6 +61,7 @@ for pol in ['vv', 'hh', 'hv']:
             kl=kl,
             k=k,
             sigma=sigma,
+            corr_length=L,
             surface_label='exponential',
             polarisations=[pol],
             n_points=129,

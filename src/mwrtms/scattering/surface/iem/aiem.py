@@ -20,7 +20,7 @@ from .fresnel_utils import (
 from .geometry_utils import compute_spatial_frequency
 from .spectrum_aiem import compute_aiem_spectrum
 from .transition import compute_transition_function
-from .kirchhoff import compute_kirchhoff_coefficients
+from .kirchhoff import compute_kirchhoff_coefficients, VKA
 from .complementary import (
     compute_expal,
     compute_complementary_vv,
@@ -29,6 +29,22 @@ from .complementary import (
     compute_complementary_vh,
 )
 from .multiple_scattering import compute_multiple_scattering
+from .guardrails import (
+    validate_inputs,
+    validate_wavenumbers,
+    validate_fresnel_bounds,
+    validate_field_coefficients,
+    validate_sigma_real,
+    validate_ms_balance,
+    # Critical validations (Phase 1)
+    validate_kirchhoff_polarization_independence,
+    validate_cross_pol_kirchhoff_zero,
+    validate_cross_pol_single_scattering,
+    validate_cross_pol_magnitude,
+    validate_cross_pol_ordering,
+    validate_energy_conservation,
+    ensure_reciprocity,
+)
 from ....core import PolarizationState
 from ....medium import Medium
 from ....factory import register_model
@@ -74,6 +90,8 @@ class AIEMModel(IEMBase):
         Number of quadrature points for multiple scattering integration (default 129)
     ms_spectral_terms : int, optional
         Maximum spectral order for multiple scattering (default 8)
+    enable_guardrails : bool, optional
+        Activate physics and units guardrails for diagnostics (default True)
     
     References
     ----------
@@ -123,6 +141,9 @@ class AIEMModel(IEMBase):
         include_multiple_scattering: bool = False,
         ms_quadrature_points: int = 129,
         ms_spectral_terms: int = 8,
+        ms_use_multiprocessing: bool = False,
+        ms_workers: Optional[int] = None,
+        enable_guardrails: bool = True,
     ) -> None:
         super().__init__(
             wave,
@@ -138,6 +159,9 @@ class AIEMModel(IEMBase):
         self._include_multiple_scattering = include_multiple_scattering
         self._ms_quadrature_points = ms_quadrature_points
         self._ms_spectral_terms = ms_spectral_terms
+        self._ms_use_multiprocessing = ms_use_multiprocessing
+        self._ms_workers = ms_workers
+        self._enable_guardrails = enable_guardrails
     
     def _compute_channel(
         self,
@@ -159,6 +183,7 @@ class AIEMModel(IEMBase):
         ks = params.ks
         kl = params.kl
         sigma = params.sigma_m
+        corr_length_m = params.correlation_length_m
         
         # Determine number of terms
         n_terms = self._determine_spectral_terms(params)
@@ -167,10 +192,27 @@ class AIEMModel(IEMBase):
         spectra = self._compute_roughness_spectrum(
             kl, theta_i, theta_s, phi_s, phi_i, n_terms
         )
+
+        if self._enable_guardrails:
+            validate_inputs(
+                eps_r,
+                self._wave.wavelength,
+                sigma,
+                corr_length_m,
+                theta_i,
+                theta_s,
+            )
+            validate_wavenumbers(k, theta_i, theta_s)
         
         # Compute Fresnel coefficients
         Rvi, Rhi, Rvhi = compute_fresnel_incident(eps_r, theta_i)
+        # print(f"Rvi: {Rvi}, Rhi: {Rhi}, Rvhi: {Rvhi}")
         Rvl, Rhl, Rvhl = compute_fresnel_specular(eps_r, theta_i, theta_s, phi_s)
+
+        if self._enable_guardrails:
+            validate_fresnel_bounds(Rvi, Rhi, eps_r)
+            validate_fresnel_bounds(Rvl, Rhl, eps_r)
+        # print(f"Rvl: {Rvl}, Rhl: {Rhl}, Rvhl: {Rvhl}")
         # Rv0, Rh0 = compute_fresnel_nadir(eps_r)
         
         # Compute transition function
@@ -186,14 +228,34 @@ class AIEMModel(IEMBase):
         Rvhtran = (Rvtran - Rhtran) / 2.0
         
         # Compute Kirchhoff field coefficients
-        fvv, fhh, fhv, fvh = compute_kirchhoff_coefficients(
-            Rvtran, Rhtran, k, theta_i, theta_s, phi_s, phi_i
-        )
+        # fvv, fhh, fhv, fvh = compute_kirchhoff_coefficients(
+        #     Rvtran, Rhtran, k, theta_i, theta_s, phi_s, phi_i
+        # )
+
+        vka_obj = VKA(theta_i, theta_s, phi_i, phi_s, Rvtran, Rhtran)
+        fvv, fhh, fhv, fvh = vka_obj.field_coefficients()
+
+        if self._enable_guardrails:
+            validate_field_coefficients(
+                {"vv": fvv, "hh": fhh, "hv": fhv, "vh": fvh}
+            )
+            # CRITICAL: Kirchhoff must be polarization-independent (Yang et al. 2017, p. 4741)
+            validate_kirchhoff_polarization_independence(fhh, fvv)
         
         # Compute Kirchhoff term (single scattering)
         kterm = self._compute_kirchhoff_term(
             fvv, fhh, fhv, fvh, ks, cs, css, spectra, n_terms, polarization
         )
+        
+        # Phase 2: Validate Kirchhoff cross-pol vanishes in backscatter
+        if self._enable_guardrails:
+            # Check if backscatter geometry (theta_i ≈ theta_s, phi_s ≈ π)
+            is_backscatter = (
+                abs(theta_i - theta_s) < 1e-6 and 
+                abs(phi_s - math.pi) < 1e-6
+            )
+            if is_backscatter and polarization in {PolarizationState.HV, PolarizationState.VH}:
+                validate_cross_pol_kirchhoff_zero(kterm, threshold_db=-80.0)
         
         # Compute complementary term (single scattering)
         cterm = self._compute_complementary_term(
@@ -202,19 +264,61 @@ class AIEMModel(IEMBase):
             fvv, fhh, fhv, fvh,
             spectra, n_terms, polarization
         )
-        
-        # Single scattering coefficient
-        sigma0_single = cterm #+ kterm
-        
+
+        # Single scattering coefficient (Kirchhoff + complementary)
+        sigma0_single = cterm #kterm + cterm # Using only complementary term because kirchhoff term is is being used in complementary term calculation
+        if self._enable_guardrails:
+            validate_sigma_real("single-scattering", sigma0_single)
+
         # Add multiple scattering if requested
         if self._include_multiple_scattering:
+            kirchhoff_coeffs = {
+                "vv": fvv,
+                "hh": fhh,
+                "hv": fhv,
+                "vh": fvh,
+            }
             ms_contrib = self._compute_multiple_scattering(
-                eps_r, k, ks, kl, sigma, theta_i, theta_s, phi_i, phi_s, polarization
+                eps_r,
+                k,
+                ks,
+                kl,
+                sigma,
+                theta_i,
+                theta_s,
+                phi_i,
+                phi_s,
+                polarization=polarization,
+                corr_length_m=corr_length_m,
+                kirchhoff_coeffs=kirchhoff_coeffs,
             )
+            if self._enable_guardrails:
+                validate_sigma_real("multiple-scattering", ms_contrib)
+                validate_ms_balance(
+                    sigma0_single,
+                    ms_contrib,
+                    ks,
+                    polarization.name.lower(),
+                )
+                # Cross-pol specific validation
+                if polarization in {PolarizationState.HV, PolarizationState.VH}:
+                    # Validate that cross-pol comes primarily from multiple scattering
+                    validate_cross_pol_single_scattering(
+                        sigma0_single,
+                        ms_contrib,
+                        threshold_ratio=0.01,
+                    )
+                    # Validate cross-pol magnitude is physically reasonable
+                    validate_cross_pol_magnitude(
+                        sigma0_single + ms_contrib,  # Total HV
+                        ks,
+                        max_reasonable_db=10.0,
+                    )
             sigma0 = sigma0_single + ms_contrib
         else:
             sigma0 = sigma0_single
-        
+        if self._enable_guardrails:
+            validate_sigma_real("total", sigma0)
         return float(np.real(sigma0))
     
     def _determine_spectral_terms(self, params: SurfaceRoughnessParameters) -> int:
@@ -336,6 +440,8 @@ class AIEMModel(IEMBase):
         csfs = np.cos(phi_s)
         
         # Wave vector components
+        # NOTE: These are magnitudes; sign/direction handled by direction parameter
+        # in complementary field coefficient functions
         qq = cs
         qqt = np.sqrt(eps_r - si**2)
         qqs = css
@@ -414,49 +520,57 @@ class AIEMModel(IEMBase):
         # Air-side, incident up
         Fvaupi = compute_complementary_vv(
             -si, 0.0, qq1, qq1, qq, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq1, ks, cs, css)
         
         # Air-side, incident down
         Fvadni = compute_complementary_vv(
             -si, 0.0, -qq1, -qq1, qq, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq1, ks, cs, css)
         
         # Air-side, scattered up
         Fvaups = compute_complementary_vv(
             -sis*csfs, -sis*sfs, qq2, qq2, qqs, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq2, ks, cs, css)
         
         # Air-side, scattered down
         Fvadns = compute_complementary_vv(
             -sis*csfs, -sis*sfs, -qq2, -qq2, qqs, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq2, ks, cs, css)
         
         # Substrate-side, incident up
         Fvbupi = compute_complementary_vv(
             -si, 0.0, qq3, qq5, qqt, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq5, ks, cs, css)
         
         # Substrate-side, incident down
         Fvbdni = compute_complementary_vv(
             -si, 0.0, -qq3, -qq5, qqt, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq5, ks, cs, css)
         
         # Substrate-side, scattered up
         Fvbups = compute_complementary_vv(
             -sis*csfs, -sis*sfs, qq4, qq6, qqts, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq6, ks, cs, css)
         
         # Substrate-side, scattered down
         Fvbdns = compute_complementary_vv(
             -sis*csfs, -sis*sfs, -qq4, -qq6, qqts, Rv, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq6, ks, cs, css)
         
         # Compute scattering integrals
@@ -498,42 +612,50 @@ class AIEMModel(IEMBase):
         # Compute complementary field coefficients (similar to VV but with Rh)
         Fhaupi = compute_complementary_hh(
             -si, 0.0, qq1, qq1, qq, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq1, ks, cs, css)
         
         Fhadni = compute_complementary_hh(
             -si, 0.0, -qq1, -qq1, qq, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq1, ks, cs, css)
         
         Fhaups = compute_complementary_hh(
             -sis*csfs, -sis*sfs, qq2, qq2, qqs, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq2, ks, cs, css)
         
         Fhadns = compute_complementary_hh(
             -sis*csfs, -sis*sfs, -qq2, -qq2, qqs, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq2, ks, cs, css)
         
         Fhbupi = compute_complementary_hh(
             -si, 0.0, qqt, qq5, qqt, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq5, ks, cs, css)
         
         Fhbdni = compute_complementary_hh(
             -si, 0.0, -qqt, -qq5, qqt, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq5, ks, cs, css)
         
         Fhbups = compute_complementary_hh(
             -sis*csfs, -sis*sfs, qqts, qq6, qqts, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq6, ks, cs, css)
         
         Fhbdns = compute_complementary_hh(
             -sis*csfs, -sis*sfs, -qqts, -qq6, qqts, Rh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq6, ks, cs, css)
         
         for n in range(1, n_terms + 1):
@@ -572,42 +694,50 @@ class AIEMModel(IEMBase):
         # Compute complementary field coefficients for cross-pol
         Fhvaupi = compute_complementary_hv(
             -si, 0.0, qq1, qq1, qq, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq1, ks, cs, css)
         
         Fhvadni = compute_complementary_hv(
             -si, 0.0, -qq1, -qq1, qq, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq1, ks, cs, css)
         
         Fhvaups = compute_complementary_hv(
             -sis*csfs, -sis*sfs, qq2, qq2, qqs, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq2, ks, cs, css)
         
         Fhvadns = compute_complementary_hv(
             -sis*csfs, -sis*sfs, -qq2, -qq2, qqs, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq2, ks, cs, css)
         
         Fhvbupi = compute_complementary_hv(
             -si, 0.0, qqt, qq5, qqt, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq5, ks, cs, css)
         
         Fhvbdni = compute_complementary_hv(
             -si, 0.0, -qqt, -qq5, qqt, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq5, ks, cs, css)
         
         Fhvbups = compute_complementary_hv(
             -sis*csfs, -sis*sfs, qqts, qq6, qqts, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq6, ks, cs, css)
         
         Fhvbdns = compute_complementary_hv(
             -sis*csfs, -sis*sfs, -qqts, -qq6, qqts, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq6, ks, cs, css)
         
         for n in range(1, n_terms + 1):
@@ -646,42 +776,50 @@ class AIEMModel(IEMBase):
         # Compute complementary field coefficients for cross-pol
         Fvhaupi = compute_complementary_vh(
             -si, 0.0, qq1, qq1, qq, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq1, ks, cs, css)
         
         Fvhadni = compute_complementary_vh(
             -si, 0.0, -qq1, -qq1, qq, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq1, ks, cs, css)
         
         Fvhaups = compute_complementary_vh(
             -sis*csfs, -sis*sfs, qq2, qq2, qqs, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(qq2, ks, cs, css)
         
         Fvhadns = compute_complementary_vh(
             -sis*csfs, -sis*sfs, -qq2, -qq2, qqs, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=False
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=False
         ) * compute_expal(-qq2, ks, cs, css)
         
         Fvhbupi = compute_complementary_vh(
             -si, 0.0, qqt, qq5, qqt, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq5, ks, cs, css)
         
         Fvhbdni = compute_complementary_vh(
             -si, 0.0, -qqt, -qq5, qqt, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq5, ks, cs, css)
         
         Fvhbups = compute_complementary_vh(
             -sis*csfs, -sis*sfs, qqts, qq6, qqts, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(qq6, ks, cs, css)
         
         Fvhbdns = compute_complementary_vh(
             -sis*csfs, -sis*sfs, -qqts, -qq6, qqts, Rvh, eps_r,
-            si, sis, cs, css, sfs, csfs, is_substrate=True
+            si, sis, cs, css, sfs, csfs,
+            is_substrate=True
         ) * compute_expal(-qq6, ks, cs, css)
         
         for n in range(1, n_terms + 1):
@@ -713,6 +851,8 @@ class AIEMModel(IEMBase):
         phi_i: float,
         phi_s: float,
         polarization: PolarizationState,
+        corr_length_m: float,
+        kirchhoff_coeffs: dict[str, complex],
     ) -> float:
         """Compute second-order multiple scattering contribution.
         
@@ -728,6 +868,8 @@ class AIEMModel(IEMBase):
             Normalized correlation length
         sigma : float
             RMS height in meters
+        corr_length_m : float
+            Correlation length in meters
         theta_i : float
             Incident angle in radians
         theta_s : float
@@ -738,6 +880,8 @@ class AIEMModel(IEMBase):
             Scattered azimuth in radians
         polarization : PolarizationState
             Polarization state
+        kirchhoff_coeffs : dict[str, complex]
+            Kirchhoff field coefficients for each polarization
             
         Returns
         -------
@@ -754,6 +898,7 @@ class AIEMModel(IEMBase):
         pol_str = pol_map.get(polarization, "vv")
         
         # Compute multiple scattering for this polarization
+        # Note: Pass None for nmax to enable auto-determination based on roughness
         ms_results = compute_multiple_scattering(
             theta_i=theta_i,
             theta_s=theta_s,
@@ -767,7 +912,7 @@ class AIEMModel(IEMBase):
             surface_label=self._correlation_type,
             polarisations=[pol_str],
             n_points=self._ms_quadrature_points,
-            nmax=self._ms_spectral_terms,
+            nmax=self._ms_spectral_terms if self._ms_spectral_terms != 8 else 8,
         )
         
         return ms_results.get(pol_str, 0.0)

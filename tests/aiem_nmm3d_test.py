@@ -24,7 +24,7 @@ import argparse
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 
@@ -119,6 +119,8 @@ def _run_comparison(
     surface_type: int,
     ratios: Sequence[float] | None,
     include_multiple: bool,
+    ms_use_multiprocessing: bool,
+    ms_workers: Optional[int],
 ) -> ComparisonResult:
     lam = toLambda(frequency_ghz)
     k = 2.0 * math.pi / lam
@@ -177,6 +179,8 @@ def _run_comparison(
                 correlation=correlation,
                 polarization=PolarizationState.VV,
                 include_multiple_scattering=include_multiple,
+                ms_use_multiprocessing=ms_use_multiprocessing,
+                ms_workers=ms_workers,
             )
             
             hh_result = mwRTMs.compute_soil_backscatter(
@@ -189,6 +193,8 @@ def _run_comparison(
                 correlation=correlation,
                 polarization=PolarizationState.HH,
                 include_multiple_scattering=include_multiple,
+                ms_use_multiprocessing=ms_use_multiprocessing,
+                ms_workers=ms_workers,
             )
             
             hv_result = mwRTMs.compute_soil_backscatter(
@@ -201,6 +207,8 @@ def _run_comparison(
                 correlation=correlation,
                 polarization=PolarizationState.HV,
                 include_multiple_scattering=include_multiple,
+                ms_use_multiprocessing=ms_use_multiprocessing,
+                ms_workers=ms_workers,
             )
             
             # Convert linear to dB
@@ -300,6 +308,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include the multiple scattering contribution in AIEM evaluations",
     )
+    parser.add_argument(
+        "--ms-multiprocessing",
+        action="store_true",
+        help="Enable multiprocessing when computing AIEM multiple scattering",
+    )
+    parser.add_argument(
+        "--ms-workers",
+        type=int,
+        default=None,
+        help="Number of worker processes for AIEM multiple scattering (default: auto)",
+    )
     return parser
 
 
@@ -326,6 +345,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         surface_type=args.surface_type,
         ratios=args.ratios,
         include_multiple=args.add_multiple,
+        ms_use_multiprocessing=args.ms_multiprocessing,
+        ms_workers=args.ms_workers,
     )
 
     overall = result.overall

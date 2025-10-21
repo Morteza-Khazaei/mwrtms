@@ -246,14 +246,7 @@ def _precompute_constants(surf: SurfaceParams, nmax: int) -> Dict[str, any]:
             fact *= n
             factorials[n - 1] = fact
         constants['factorials'] = factorials
-    
-    # Pre-compute normalization factor for exponential correlation
-    if surf.type in ('exponential', 'exp'):
-        if NUMBA_AVAILABLE:
-            constants['two_pi_power'] = numba_backend.get_two_pi_power(10)
-        else:
-            constants['two_pi_power'] = (2.0 * np.pi) ** 10
-    
+
     return constants
 
 
@@ -314,9 +307,9 @@ class _MultipleScatteringIntegrator:
 
             if pol in {"hh", "vv"}:
                 # Co-polarized: both kc and c terms contribute
-                # Take absolute value of integrands to ensure positive result
-                Ikc_real = np.abs(np.real(integrand_kc)) * rad
-                Ic_real = np.abs(np.real(integrand_c)) * rad
+                # Take real part and allow cancellations during integration
+                Ikc_real = np.real(integrand_kc) * rad
+                Ic_real = np.real(integrand_c) * rad
                 
                 # Use Numba-accelerated integration if available
                 if NUMBA_AVAILABLE:
@@ -331,7 +324,7 @@ class _MultipleScatteringIntegrator:
 
             elif pol in {"hv", "vh"}:
                 # Cross-polarized: both kc and c terms contribute
-                # Take absolute value of integrands to ensure positive result
+                # Cross-pol needs abs() to prevent excessive cancellation
                 Ikc_real = np.abs(np.real(integrand_kc)) * rad
                 Ic_real = np.abs(np.real(integrand_c)) * rad
                 
@@ -362,18 +355,23 @@ def _make_Wn_provider(surf: SurfaceParams, constants: Dict[str, any]) -> Callabl
 
     if surf.type == "gaussian" or surf.type == "gauss":
         # NumPy implementation (works for both real and complex)
+        # NOTE: σ² NOT included - it's in the coefficients that get raised to powers
         def provider(u: np.ndarray, v: np.ndarray, n: int) -> np.ndarray:
             factor = kl**2 / max(n, 1)
             exp_arg = -(kl**2 / (4.0 * max(n, 1))) * (u**2 + v**2)
-            return sigma2 * (factor / (4.0 * np.pi)) * np.exp(exp_arg)
+            return (factor / (4.0 * np.pi)) * np.exp(exp_arg)  # NO sigma2!
 
     else:  # Exponential (default)
-        two_pi_power = constants.get('two_pi_power', (2.0 * np.pi)**10)
-        
-        # NumPy implementation (works for both real and complex)
+        # Exponential spectrum formula from Yang et al. (2017)
+        # W^(n)(κ) = 2πℓ²n / [n² + (ℓκ)²]^(3/2)
+        # NOTE: σ² is NOT included here because it's already in the coefficients a_m, a_n
+        # which are raised to powers m, n in the series summation
         def provider(u: np.ndarray, v: np.ndarray, n: int) -> np.ndarray:
-            denom = 1.0 + ((kl * np.sqrt(u**2 + v**2)) / max(n, 1)) ** 2
-            return two_pi_power * sigma2 * (kl / max(n, 1)) ** 2 * denom ** (-1.5)
+            n_safe = max(n, 1)
+            kappa = np.sqrt(u**2 + v**2)
+            numerator = 2.0 * np.pi * n_safe * kl**2
+            denominator = (n_safe**2 + (kl * kappa)**2) ** 1.5
+            return numerator / denominator  # NO sigma2 here!
 
     return provider
 
@@ -486,12 +484,12 @@ def _build_propagators(
             + (1 + Rv) * (1 - Rv) * inv_q1 * coeff["C6"]
         )
         Gp_plus = (
-            (1 + Rv) * (1 + Rv) * u_r * inv_q2 * coeff_t["C1"]
-            - (1 + Rv) * (1 - Rv) * inv_q2 * coeff_t["C2"]
-            - (1 + Rv * er) * (1 + Rv) * inv_q2 * coeff_t["C3"]
-            - (1 - Rv) * er * (1 - Rv) * inv_q2 * coeff_t["C4"]
-            - (1 - Rv) * (1 + Rv) * inv_q2 * coeff_t["C5"]
-            - (1 - Rv) * (1 - Rv) * u_r * inv_q2 * coeff_t["C6"]
+            -(1 + Rv) * (1 + Rv) * er * inv_q2 * coeff_t["C1"]
+            + (1 + Rv) * (1 - Rv) * inv_q2 * coeff_t["C2"]
+            + (1 + Rv) * (1 + Rv) * u_r * inv_q2 * coeff_t["C3"]
+            + (1 - Rv) * (1 - Rv) * u_r * inv_q2 * coeff_t["C4"]
+            + (1 - Rv) * (1 + Rv) * inv_q2 * coeff_t["C5"]
+            + (1 - Rv) * (1 - Rv) * er * inv_q2 * coeff_t["C6"]
         )
     elif pol == "hh":
         coeff, coeff_t = C_air, C_soil
@@ -576,12 +574,12 @@ def _compute_downward_propagators(
             + (1 + Rv) * (1 - Rv) * inv_q1 * coeff["C6"]
         )
         Gm = (
-            (1 + Rv) * (1 + Rv) * u_r * inv_q2 * coeff_t["C1"]
-            - (1 + Rv) * (1 - Rv) * inv_q2 * coeff_t["C2"]
-            - (1 + Rv * er) * (1 + Rv) * inv_q2 * coeff_t["C3"]
-            - (1 - Rv) * er * (1 - Rv) * inv_q2 * coeff_t["C4"]
-            - (1 - Rv) * (1 + Rv) * inv_q2 * coeff_t["C5"]
-            - (1 - Rv) * (1 - Rv) * u_r * inv_q2 * coeff_t["C6"]
+            -(1 + Rv) * (1 + Rv) * er * inv_q2 * coeff_t["C1"]
+            + (1 + Rv) * (1 - Rv) * inv_q2 * coeff_t["C2"]
+            + (1 + Rv) * (1 + Rv) * inv_q2 * coeff_t["C3"]
+            + (1 - Rv) * (1 - Rv) * inv_q2 * coeff_t["C4"]
+            + (1 - Rv) * (1 + Rv) * inv_q2 * coeff_t["C5"]
+            + (1 - Rv) * (1 - Rv) * er * inv_q2 * coeff_t["C6"]
         )
     elif pol == "hh":
         coeff = C_air

@@ -18,15 +18,16 @@ scattering. See KA_MODEL_ACFs.md for complete derivation.
 
 from __future__ import annotations
 
-import math
 import numpy as np
 
 from ...factory import register_model
+from ...core import PolarizationState, normalize_polarization
 from .base import SurfaceScattering
-from .iem.fresnel_utils import compute_fresnel_incident
-from .iem.geometry_utils import compute_q_vectors
-from .iem.kirchhoff import compute_kirchhoff_coefficients
+from .iem.fresnel_utils import compute_fresnel_incident, compute_fresnel_specular
+from .iem.geometry_utils import compute_spatial_frequency
+from .iem.kirchhoff import VKA
 from .iem.spectrum_aiem import compute_aiem_spectrum
+from .iem.transition import compute_transition_function
 
 __all__ = ["KAModel"]
 
@@ -61,8 +62,9 @@ class KAModel(SurfaceScattering):
         Power exponent for x-power ACF (default: 1.5)
         Only used when acf_type='xpower'
     nmax : int, optional
-        Maximum order in series expansion (default: 8)
-        Higher values improve accuracy but increase computation time
+        Optional cap on the series expansion. When ``None`` (default), the
+        automatic AIEM convergence criterion selects the number of spectral
+        terms.
     
     Notes
     -----
@@ -98,7 +100,7 @@ class KAModel(SurfaceScattering):
         surface_roughness=None,
         acf_type: str = "exponential",
         alpha: float = 1.5,
-        nmax: int = 8
+        nmax: int | None = None
     ) -> None:
         """Initialize the KA model.
         
@@ -117,7 +119,9 @@ class KAModel(SurfaceScattering):
         alpha : float, optional
             Power exponent for x-power ACF (default: 1.5)
         nmax : int, optional
-            Maximum order in series expansion (default: 8)
+            Optional cap on the AIEM spectral series order. If ``None`` (default),
+            the automatic AIEM convergence criterion is used without additional
+            truncation.
         """
         super().__init__(wave, geometry, surface, surface_roughness=surface_roughness)
         
@@ -125,6 +129,7 @@ class KAModel(SurfaceScattering):
         self.acf_type = self._normalize_acf_type(acf_type)
         self.alpha = alpha
         self.nmax = nmax
+        self._convergence_tolerance = 1e-16
         
         # Validate parameters
         if self._surface is None:
@@ -153,58 +158,60 @@ class KAModel(SurfaceScattering):
             raise ValueError(f"Unknown ACF type: {acf_type}. "
                            f"Use 'gaussian', 'exponential', or 'xpower'")
         return normalized
-
+        
     def compute(self, medium_above, medium_below, polarization) -> float:
-        """Compute the backscatter coefficient for the given polarization.
+        """Compute single-scattering Kirchhoff term aligned with AIEM."""
+        pol_state = normalize_polarization(polarization)[0]
         
-        Parameters
-        ----------
-        medium_above : Medium
-            Medium above the surface (typically air)
-        medium_below : Medium
-            Medium below the surface (typically soil/water)
-        polarization : PolarizationState
-            Desired polarization (VV, HH, HV, or VH)
-            
-        Returns
-        -------
-        float
-            Backscatter coefficient (linear units)
-        """
-        # Get surface parameters
-        sigma = self._surface.rms_height()  # meters
-        L = self._surface.correlation_length()  # meters
+        # Surface statistics
+        sigma = self._surface.rms_height()
+        corr_length = self._surface.correlation_length()
+        k = self._wave.wavenumber
+        ks = k * sigma
+        kl = k * corr_length
         
-        # Get permittivity
-        eps_r = medium_below.permittivity(self._wave.frequency_hz)
-        
-        # Get wavelength
-        lambda0 = self._wave.wavelength  # meters
-        
-        # For backscatter, incident and scattered angles are the same
+        # Geometry
         theta_i = self._geometry.theta_i_rad
-        theta_s = self._geometry.theta_i_rad  # Backscatter
-        phi_i = 0.0  # Incident azimuth (reference)
-        phi_s = np.pi  # Backscatter azimuth (180 degrees)
+        theta_s = self._geometry.theta_s_rad
+        phi_i = 0.0
+        phi_s = self._geometry.phi_s_rad
+        cs = np.cos(theta_i)
+        css = np.cos(theta_s)
         
-        # Compute scattering coefficients for all polarizations
-        result = self._sigma0_ka(
-            lambda0, theta_i, phi_i, theta_s, phi_s, 
-            sigma, L, eps_r, self.nmax
+        # Spectral order
+        n_terms = self._determine_spectral_terms(ks, cs, css)
+        if n_terms <= 0:
+            return 0.0
+        
+        # Roughness spectrum (matches AIEM)
+        spectra = self._compute_roughness_spectrum(
+            kl, theta_i, theta_s, phi_s, phi_i, n_terms
         )
         
-        # Return the requested polarization
-        pol_value = polarization.value.lower()
-        if pol_value in ("vv", "v"):
-            return float(max(result['VV'], 0.0))
-        elif pol_value in ("hh", "h"):
-            return float(max(result['HH'], 0.0))
-        elif pol_value == "hv":
-            return float(max(result['HV'], 0.0))
-        elif pol_value == "vh":
-            return float(max(result['VH'], 0.0))
-        else:
-            return 0.0
+        # Fresnel reflection coefficients
+        eps_r = medium_below.permittivity(self._wave.frequency_hz)
+        Rvi, Rhi, _ = compute_fresnel_incident(eps_r, theta_i)
+        Rvl, Rhl, _ = compute_fresnel_specular(eps_r, theta_i, theta_s, phi_s)
+        
+        # Transition-adjusted coefficients
+        Tfv, Tfh = compute_transition_function(
+            eps_r, theta_i, ks, cs, spectra, n_terms
+        )
+        Rvtran = Rvi + (Rvl - Rvi) * Tfv
+        Rhtran = Rhi + (Rhl - Rhi) * Tfh
+        
+        # Kirchhoff field coefficients (vector KA)
+        vka = VKA(theta_i, theta_s, phi_i, phi_s, Rvtran, Rhtran)
+        fvv, fhh, fhv, fvh = vka.field_coefficients()
+        
+        sigma0 = self._compute_kirchhoff_term(
+            fvv, fhh, fhv, fvh,
+            ks, cs, css,
+            spectra, n_terms,
+            pol_state,
+        )
+        
+        return float(max(sigma0, 0.0))
 
     def _compute_kirchhoff(self, R_h, R_v, polarization):
         """Return the Kirchhoff contribution (not used in this model)."""
@@ -214,138 +221,107 @@ class KAModel(SurfaceScattering):
         """Return the complementary contribution (not used in this model)."""
         return 0.0
 
-    
-    
-    def _sigma0_ka(
+    def _determine_spectral_terms(self, ks: float, cs: float, css: float) -> int:
+        """Replicate AIEM spectral order selection for the Kirchhoff term."""
+        if self.nmax is not None:
+            if self.nmax <= 0:
+                raise ValueError("nmax must be positive")
+            max_terms = self.nmax
+        else:
+            max_terms = 1000
+        
+        cos_sum = cs + css
+        factor = (ks ** 2) * (cos_sum ** 2)
+        if factor <= 0.0:
+            return 1
+        
+        tol = self._convergence_tolerance
+        temp_prev = 0.0
+        temp = factor
+        iterm = 1
+        
+        while abs(temp - temp_prev) > tol and iterm < max_terms:
+            temp_prev = temp
+            iterm += 1
+            temp = temp_prev * factor / iterm
+        
+        return max(1, min(iterm, max_terms))
+
+    def _compute_roughness_spectrum(
         self,
-        lambda0: float,
+        kl: float,
         theta_i: float,
-        phi_i: float,
         theta_s: float,
         phi_s: float,
-        sigma: float,
-        L: float,
-        eps_r: complex,
-        nmax: int
-    ) -> dict:
-        """Compute KA scattering coefficients with general ACF.
+        phi_i: float,
+        n_terms: int,
+    ) -> np.ndarray:
+        """Compute AIEM roughness spectrum for the required orders."""
+        if n_terms <= 0:
+            return np.zeros(0, dtype=float)
         
-        This implements the complete KA series expansion for bistatic scattering
-        from a rough surface with the specified autocorrelation function.
+        K = compute_spatial_frequency(kl, theta_i, theta_s, phi_s, phi_i)
+        spectra = np.zeros(n_terms, dtype=float)
+        corr_type = self._correlation_type_for_spectrum()
         
-        Uses IEM family components for:
-        - Fresnel coefficients (compute_fresnel_incident)
-        - Wave vector components (compute_q_vectors)
-        - Kirchhoff field coefficients (compute_kirchhoff_coefficients)
-        - Roughness spectrum (compute_aiem_spectrum)
+        for n in range(1, n_terms + 1):
+            spectra[n - 1] = compute_aiem_spectrum(
+                kl=kl,
+                K=K,
+                n=n,
+                correlation_type=corr_type,
+                power_exponent=self.alpha,
+            )
         
-        Parameters
-        ----------
-        lambda0 : float
-            Wavelength (meters)
-        theta_i : float
-            Incident elevation angle (radians)
-        phi_i : float
-            Incident azimuth angle (radians)
-        theta_s : float
-            Scattered elevation angle (radians)
-        phi_s : float
-            Scattered azimuth angle (radians)
-        sigma : float
-            RMS height (meters)
-        L : float
-            Correlation length (meters)
-        eps_r : complex
-            Relative permittivity
-        nmax : int
-            Maximum series order
-            
-        Returns
-        -------
-        dict
-            Dictionary with keys 'VV', 'HH', 'HV', 'VH' containing scattering
-            coefficients in linear units
-        """
-        # Wavenumber
-        k = 2.0 * np.pi / lambda0
-        kl = k * L  # Normalized correlation length
+        return spectra
+
+    def _correlation_type_for_spectrum(self) -> str:
+        """Map KA ACF identifiers to AIEM spectrum types."""
+        if self.acf_type == "gaussian":
+            return "gaussian"
+        if self.acf_type == "exponential":
+            return "exponential"
+        if self.acf_type == "xpower":
+            return "powerlaw"
+        raise ValueError(f"Unsupported ACF type '{self.acf_type}' for spectrum computation.")
+
+    def _compute_kirchhoff_term(
+        self,
+        fvv: complex,
+        fhh: complex,
+        fhv: complex,
+        fvh: complex,
+        ks: float,
+        cs: float,
+        css: float,
+        spectra: np.ndarray,
+        n_terms: int,
+        polarization: PolarizationState,
+    ) -> float:
+        """Kirchhoff single-scattering term identical to AIEM implementation."""
+        if n_terms <= 0 or len(spectra) < n_terms:
+            return 0.0
         
-        # Wave vector components using IEM geometry utilities
-        kx, ky, ksx, ksy = compute_q_vectors(k, theta_i, theta_s, phi_s, phi_i)
+        if polarization == PolarizationState.VV:
+            field_coeff = fvv
+        elif polarization == PolarizationState.HH:
+            field_coeff = fhh
+        elif polarization == PolarizationState.HV:
+            field_coeff = fhv
+        elif polarization == PolarizationState.VH:
+            field_coeff = fvh
+        else:
+            return 0.0
         
-        # Compute z-components manually (not provided by compute_q_vectors)
-        kz = -k * np.cos(theta_i)  # Negative (downward)
-        ksz = k * np.cos(theta_s)  # Positive (upward)
+        ks2 = ks ** 2
+        cos_sum = cs + css
+        sum_val = 0.0
+        temp = 1.0
         
-        # Horizontal wavenumber mismatch
-        dKx = ksx - kx
-        dKy = ksy - ky
-        K = np.hypot(dKx, dKy)
+        for n in range(1, n_terms + 1):
+            temp *= (ks2 * cos_sum ** 2) / n
+            sum_val += temp * spectra[n - 1]
         
-        # Vertical wavenumber sum (crucial for KA)
-        q_z = k * (np.cos(theta_s) + np.cos(theta_i))
-        
-        # Fresnel coefficients at incident angle using IEM utilities
-        R_v, R_h, _ = compute_fresnel_incident(eps_r, theta_i)
-        
-        # Kirchhoff field coefficients using IEM utilities
-        f_vv, f_hh, f_hv, f_vh = compute_kirchhoff_coefficients(
-            R_v, R_h, k, theta_i, theta_s, phi_s, phi_i
-        )
-        
-        # Outer exponential factor
-        outer_exp = (k**2 / 2.0) * np.exp(-(sigma**2) * (ksz**2 + kz**2))
-        
-        # Inner exponential factor (in I_qp^(n))
-        inner_exp = np.exp(-(sigma**2) * np.abs(kz) * ksz)
-        
-        # Series accumulation for each polarization
-        def compute_series(f_qp: complex) -> float:
-            """Compute series sum for given field coefficient."""
-            accumulator = 0.0
-            
-            for n in range(1, nmax + 1):
-                # KA moment kernel: I_qp^(n) = q_z^n * f_qp * exp(-σ² |k_z| k_sz)
-                I_n = (q_z ** n) * f_qp * inner_exp
-                
-                # Roughness spectrum W^(n)(K) using IEM spectrum utilities
-                # Map KA ACF types to AIEM correlation types
-                if self.acf_type == "gaussian":
-                    corr_type = "gaussian"
-                elif self.acf_type == "exponential":
-                    corr_type = "exponential"
-                elif self.acf_type == "xpower":
-                    corr_type = "powerlaw"
-                else:
-                    corr_type = "gaussian"
-                
-                W_n = compute_aiem_spectrum(
-                    kl=kl,
-                    K=K,
-                    n=n,
-                    correlation_type=corr_type,
-                    power_exponent=self.alpha,
-                    kx=kx,
-                    ky=ky
-                )
-                
-                # Series term: (σ^(2n) / n!) * |I_n|² * W^(n)
-                factorial_n = math.factorial(n)
-                term = (sigma ** (2 * n) / factorial_n) * (np.abs(I_n) ** 2) * W_n
-                
-                accumulator += term
-            
-            return float(np.real(outer_exp * accumulator))
-        
-        # Compute for all polarizations
-        sigma0_vv = compute_series(f_vv)
-        sigma0_hh = compute_series(f_hh)
-        sigma0_hv = compute_series(f_hv)
-        sigma0_vh = compute_series(f_vh)
-        
-        return {
-            'VV': sigma0_vv,
-            'HH': sigma0_hh,
-            'HV': sigma0_hv,
-            'VH': sigma0_vh
-        }
+        exp_term = np.exp(-ks2 * cos_sum ** 2) * sum_val
+        kterm = 0.5 * exp_term * np.abs(field_coeff) ** 2
+        return float(np.real(kterm))
